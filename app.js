@@ -19,8 +19,11 @@ const state = {
   evSelectedMembers: new Set(),
   memberPhoto: '',
   hidden: new Set(JSON.parse(localStorage.getItem(LS_HIDDEN) || '[]')),
+  showHolidays: localStorage.getItem('famcal_holidays') !== 'off',
   offline: false,
 };
+
+const HOLIDAY_MEMBER = '__holiday__';
 
 const $ = (id) => document.getElementById(id);
 
@@ -76,13 +79,19 @@ function eventsOnDay(dstr) {
     .sort((a, b) => (a['終日'] === 'ON' ? '0' : '1' + a['開始時刻']).localeCompare(b['終日'] === 'ON' ? '0' : '1' + b['開始時刻']));
 }
 
+function isHoliday(ev) {
+  return (ev['メンバー'] || '') === HOLIDAY_MEMBER;
+}
+
 function isEventVisible(ev) {
+  if (isHoliday(ev)) return state.showHolidays;
   const ids = (ev['メンバー'] || '').split(',').filter(String);
   if (ids.length === 0) return true;
   return ids.some((id) => !state.hidden.has(id));
 }
 
 function eventColor(ev) {
+  if (isHoliday(ev)) return '#d66';
   const ids = (ev['メンバー'] || '').split(',').filter(String);
   for (const id of ids) {
     const m = state.members.find((x) => x.id === id);
@@ -128,6 +137,16 @@ function renderMemberBar() {
     btn.onclick = () => toggleMember(m.id);
     bar.appendChild(btn);
   });
+  const hol = document.createElement('button');
+  hol.className = 'member-chip' + (state.showHolidays ? '' : ' off');
+  hol.innerHTML = '<div class="avatar holiday-avatar">🎌</div><div class="chip-name">祝日</div>';
+  hol.onclick = () => {
+    state.showHolidays = !state.showHolidays;
+    localStorage.setItem('famcal_holidays', state.showHolidays ? 'on' : 'off');
+    renderMemberBar();
+    renderGrid();
+  };
+  bar.appendChild(hol);
   const add = document.createElement('button');
   add.className = 'member-chip add-chip';
   add.innerHTML = '<div class="avatar">＋</div><div class="chip-name">追加</div>';
@@ -150,27 +169,97 @@ function renderGrid() {
   const start = new Date(first);
   start.setDate(1 - first.getDay());
   const today = todayStr();
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const dstr = ymd(d);
-    const cell = document.createElement('div');
-    const dow = d.getDay();
-    cell.className = 'day-cell' +
-      (d.getMonth() !== state.month ? ' other' : '') +
-      (dow === 0 ? ' sun' : dow === 6 ? ' sat' : '') +
-      (dstr === today ? ' today' : '');
-    let html = `<div class="day-num">${d.getDate()}</div>`;
-    const evs = eventsOnDay(dstr);
-    evs.slice(0, 3).forEach((ev) => {
-      const contL = ev['開始日'] < dstr ? ' cont-l' : '';
-      const contR = (ev['終了日'] || ev['開始日']) > dstr ? ' cont-r' : '';
-      html += `<div class="ev-chip${contL}${contR}" style="background:${eventColor(ev)}">${esc(ev['タイトル'])}</div>`;
+  const LANES = 4;      // 1週あたりの帯の最大段数
+  const LANE_H = 15;    // 帯1段の高さ(px)
+  const LANE_TOP = 22;  // 日付数字の下からの開始位置(px)
+
+  const spanDays = (ev) =>
+    (new Date((ev['終了日'] || ev['開始日']) + 'T00:00:00') - new Date(ev['開始日'] + 'T00:00:00')) / 86400000;
+  const timeKey = (ev) => (ev['終日'] === 'ON' ? '0' : '1' + (ev['開始時刻'] || ''));
+
+  for (let w = 0; w < 6; w++) {
+    const weekEl = document.createElement('div');
+    weekEl.className = 'week-row';
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + w * 7 + i);
+      dates.push(d);
+    }
+    const wStart = ymd(dates[0]);
+    const wEnd = ymd(dates[6]);
+    const colOf = (dstr) => {
+      if (dstr <= wStart) return 0;
+      if (dstr >= wEnd) return 6;
+      return Math.round((new Date(dstr + 'T00:00:00') - dates[0]) / 86400000);
+    };
+
+    // 日セル（祝日は日付の下に赤文字で名称表示）
+    dates.forEach((d) => {
+      const dstr = ymd(d);
+      const dow = d.getDay();
+      const holidays = state.showHolidays
+        ? state.events.filter((ev) => isHoliday(ev) && ev['開始日'] <= dstr && dstr <= (ev['終了日'] || ev['開始日']))
+        : [];
+      const cell = document.createElement('div');
+      cell.className = 'day-cell' +
+        (d.getMonth() !== state.month ? ' other' : '') +
+        (dow === 0 || holidays.length ? ' sun' : dow === 6 ? ' sat' : '') +
+        (dstr === today ? ' today' : '');
+      cell.innerHTML = `<div class="day-num">${d.getDate()}</div>` +
+        (holidays.length ? `<div class="holiday-name">${esc(holidays[0]['タイトル'])}</div>` : '');
+      cell.onclick = () => openDaySheet(dstr);
+      weekEl.appendChild(cell);
     });
-    if (evs.length > 3) html += `<div class="ev-more">+${evs.length - 3}件</div>`;
-    cell.innerHTML = html;
-    cell.onclick = () => openDaySheet(dstr);
-    grid.appendChild(cell);
+
+    // 予定帯（期間予定は週ごとに1本の連結バー・タイトルをフル表示）
+    const evs = state.events
+      .filter((ev) => ev['開始日'] && !isHoliday(ev) &&
+        ev['開始日'] <= wEnd && (ev['終了日'] || ev['開始日']) >= wStart)
+      .filter(isEventVisible)
+      .sort((a, b) => a['開始日'].localeCompare(b['開始日']) ||
+        spanDays(b) - spanDays(a) || timeKey(a).localeCompare(timeKey(b)));
+
+    const laneEnd = [];                 // 各段の占有済み最終列
+    const overflow = new Array(7).fill(0);
+    evs.forEach((ev) => {
+      const c0 = colOf(ev['開始日']);
+      const c1 = colOf(ev['終了日'] || ev['開始日']);
+      let lane = 0;
+      while (lane < laneEnd.length && laneEnd[lane] >= c0) lane++;
+      if (lane >= LANES) {
+        for (let c = c0; c <= c1; c++) overflow[c]++;
+        return;
+      }
+      laneEnd[lane] = c1;
+      const bar = document.createElement('button');
+      bar.type = 'button';
+      bar.className = 'ev-bar' +
+        (ev['開始日'] < wStart ? ' cont-l' : '') +
+        ((ev['終了日'] || ev['開始日']) > wEnd ? ' cont-r' : '');
+      bar.style.cssText =
+        `left:calc(${c0} * 100% / 7 + 1px);` +
+        `width:calc(${c1 - c0 + 1} * 100% / 7 - 3px);` +
+        `top:${LANE_TOP + lane * LANE_H}px;` +
+        `background:${eventColor(ev)}`;
+      bar.textContent = ev['タイトル'];
+      bar.onclick = (e) => {
+        e.stopPropagation();
+        state.selectedDate = ev['開始日'];
+        openEventEditor(ev);
+      };
+      weekEl.appendChild(bar);
+    });
+    overflow.forEach((n, i) => {
+      if (!n) return;
+      const m = document.createElement('div');
+      m.className = 'ev-more-abs';
+      m.style.left = `calc(${i} * 100% / 7 + 2px)`;
+      m.textContent = '+' + n;
+      weekEl.appendChild(m);
+    });
+
+    grid.appendChild(weekEl);
   }
 }
 
@@ -529,19 +618,51 @@ async function saveSettings() {
 
 // ---------- AI予定作成 ----------
 
+let aiImage = null; // { data: base64, mime }
+
 function openAiModal() {
   $('aiText').value = '';
+  aiImage = null;
+  $('aiImage').value = '';
+  $('aiImgPreview').classList.add('hidden');
   $('aiModal').classList.remove('hidden');
+}
+
+function handleAiImage(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      // 読み取り精度と転送量のバランスで長辺1024pxに縮小
+      const sc = Math.min(1, 1024 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * sc);
+      c.height = Math.round(img.height * sc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const dataUrl = c.toDataURL('image/jpeg', 0.8);
+      aiImage = { data: dataUrl.split(',')[1], mime: 'image/jpeg' };
+      const p = $('aiImgPreview');
+      p.style.backgroundImage = `url(${dataUrl})`;
+      p.classList.remove('hidden');
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 async function runAiParse() {
   const text = $('aiText').value.trim();
-  if (!text) return toast('文章を入力してください');
+  if (!text && !aiImage) return toast('文章を入力するか写真を選んでください');
   const btn = $('aiRun');
   btn.disabled = true;
   btn.textContent = 'AIが考えています…';
   try {
-    const data = await api('aiParse', { text });
+    const payload = { text };
+    if (aiImage) {
+      payload.image = aiImage.data;
+      payload.mime = aiImage.mime;
+    }
+    const data = await api('aiParse', payload);
     closeOverlay('aiModal');
     // 解釈結果を新規予定としてエディタに流し込み、ユーザーが確認してから保存
     const ev = data.event;
@@ -665,6 +786,7 @@ function bindEvents() {
   $('fab').onclick = () => { state.selectedDate = todayStr(); openEventEditor(null); };
   $('aiFab').onclick = openAiModal;
   $('aiRun').onclick = runAiParse;
+  $('aiImage').onchange = (e) => e.target.files[0] && handleAiImage(e.target.files[0]);
   $('addEventFromDay').onclick = () => { closeOverlay('daySheet'); openEventEditor(null); };
   $('evAllDay').onchange = updateTimeRow;
   $('evSave').onclick = saveEvent;

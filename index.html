@@ -60,7 +60,11 @@
     <label>やりたいことを文章で書いてください
       <textarea id="aiText" rows="3" placeholder="例：来週金曜の15時にしんらの歯医者&#10;例：7月20日から2泊で家族旅行"></textarea>
     </label>
-    <p class="hint-note">AIが日付・時間・対象の家族を読み取って入力します。結果は登録前に必ず確認画面に出ます。</p>
+    <label class="btn-secondary photo-btn ai-photo-btn">📷 写真から読み取る（チラシ・学校プリント等）
+      <input type="file" id="aiImage" accept="image/*" hidden>
+    </label>
+    <div id="aiImgPreview" class="ai-img-preview hidden"></div>
+    <p class="hint-note">AIが日付・時間・対象の家族を読み取って入力します。結果は登録前に必ず確認画面に出ます。写真だけでもOKです。</p>
     <div class="modal-actions">
       <button id="aiRun" class="btn-primary">AIで作成</button>
     </div>
