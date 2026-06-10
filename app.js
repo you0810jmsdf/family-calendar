@@ -55,6 +55,8 @@ async function loadAll() {
     applyData(await api('listAll'));
     state.offline = false;
   } catch (e) {
+    // 家族コード変更（認証エラー）時はキャッシュに逃がさず再入力へ誘導
+    if (String(e.message).indexOf('認証エラー') >= 0) throw e;
     const cache = localStorage.getItem(LS_CACHE);
     if (cache) {
       applyData(JSON.parse(cache));
@@ -745,6 +747,15 @@ async function start() {
     await loadAll();
     renderAll();
   } catch (e) {
+    if (String(e.message).indexOf('認証エラー') >= 0) {
+      // コードが変わった端末は入力画面へ戻す
+      localStorage.removeItem(LS_KEY);
+      state.key = '';
+      $('mainScreen').classList.add('hidden');
+      $('setupScreen').classList.remove('hidden');
+      $('setupError').textContent = '家族コードが新しくなりました。新しいコードを入力してください';
+      return;
+    }
     toast('読み込みエラー: ' + e.message);
   }
 }
