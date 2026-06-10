@@ -3,7 +3,6 @@
   "short_name": "家族カレ",
   "description": "家族で共有するシンプルなカレンダー",
   "lang": "ja",
-  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fa",

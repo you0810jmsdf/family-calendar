@@ -1,5 +1,5 @@
 /* 家族カレンダー Service Worker（アプリシェルのキャッシュ） */
-const CACHE = 'famcal-v4';
+const CACHE = 'famcal-v5';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -19,7 +19,7 @@ self.addEventListener('fetch', (e) => {
   // APIは常にネットワーク（GAS側はキャッシュしない）
   if (url.origin !== self.location.origin) return;
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
+    caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request).then((res) => {
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(e.request, copy));
       return res;

@@ -48,7 +48,23 @@
 
   <div id="offlineBanner" class="offline-banner hidden">オフライン表示中（前回取得データ）</div>
 
+  <button id="aiFab" class="fab ai-fab" aria-label="AIで予定を作る">AI</button>
   <button id="fab" class="fab" aria-label="予定を追加">＋</button>
+</div>
+
+<!-- AI予定作成 -->
+<div id="aiModal" class="modal hidden">
+  <div class="modal-backdrop" data-close="aiModal"></div>
+  <div class="modal-body">
+    <h2>AIに頼んで予定を作る</h2>
+    <label>やりたいことを文章で書いてください
+      <textarea id="aiText" rows="3" placeholder="例：来週金曜の15時にしんらの歯医者&#10;例：7月20日から2泊で家族旅行"></textarea>
+    </label>
+    <p class="hint-note">AIが日付・時間・対象の家族を読み取って入力します。結果は登録前に必ず確認画面に出ます。</p>
+    <div class="modal-actions">
+      <button id="aiRun" class="btn-primary">AIで作成</button>
+    </div>
+  </div>
 </div>
 
 <!-- 日別ボトムシート -->
@@ -150,6 +166,9 @@
     </label>
     <label class="toggle-row">通知音（Phase 2のアプリ版で有効になります）
       <input type="checkbox" id="sSound">
+    </label>
+    <label>共有カレンダーID（ファミリー等・全員に表示で取込）
+      <input type="text" id="sFamilyCal" placeholder="family...@group.calendar.google.com">
     </label>
     <div class="field-label">家族の管理</div>
     <div id="sMemberList" class="settings-member-list"></div>

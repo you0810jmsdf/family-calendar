@@ -482,6 +482,7 @@ function openSettings() {
   }
   sel.value = state.settings.notifyHour || '17';
   $('sSound').checked = (state.settings.sound || 'ON') === 'ON';
+  $('sFamilyCal').value = state.settings.familyCalendarId || '';
   renderSettingsMembers();
   $('settingsModal').classList.remove('hidden');
 }
@@ -518,11 +519,44 @@ async function saveSettings() {
         familyName: $('sFamilyName').value.trim(),
         notifyHour: $('sNotifyHour').value,
         sound: $('sSound').checked ? 'ON' : 'OFF',
+        familyCalendarId: $('sFamilyCal').value.trim(),
       },
     }));
     closeOverlay('settingsModal');
     toast('設定を保存しました（通知時刻を更新）');
   });
+}
+
+// ---------- AI予定作成 ----------
+
+function openAiModal() {
+  $('aiText').value = '';
+  $('aiModal').classList.remove('hidden');
+}
+
+async function runAiParse() {
+  const text = $('aiText').value.trim();
+  if (!text) return toast('文章を入力してください');
+  const btn = $('aiRun');
+  btn.disabled = true;
+  btn.textContent = 'AIが考えています…';
+  try {
+    const data = await api('aiParse', { text });
+    closeOverlay('aiModal');
+    // 解釈結果を新規予定としてエディタに流し込み、ユーザーが確認してから保存
+    const ev = data.event;
+    ev.id = '';
+    state.selectedDate = ev['開始日'];
+    openEventEditor(ev);
+    state.editingEventId = '';
+    $('evDelete').classList.add('hidden');
+    $('eventModalTitle').textContent = '予定を追加（AI作成・内容を確認してください）';
+  } catch (e) {
+    toast('エラー: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'AIで作成';
+  }
 }
 
 // ---------- 共通UI ----------
@@ -571,6 +605,14 @@ async function start() {
   const now = new Date();
   state.year = now.getFullYear();
   state.month = now.getMonth();
+
+  // QRコード等のURLに ?code=家族コード が付いていれば自動ログイン
+  // （URLは書き換えない：このまま「ホーム画面に追加」するとPWA側にもコードが引き継がれる）
+  const urlCode = new URLSearchParams(location.search).get('code');
+  if (urlCode && !state.key) {
+    state.key = urlCode;
+    localStorage.setItem(LS_KEY, urlCode);
+  }
 
   if (!state.key) {
     $('setupScreen').classList.remove('hidden');
@@ -621,6 +663,8 @@ function bindEvents() {
   };
   $('settingsBtn').onclick = openSettings;
   $('fab').onclick = () => { state.selectedDate = todayStr(); openEventEditor(null); };
+  $('aiFab').onclick = openAiModal;
+  $('aiRun').onclick = runAiParse;
   $('addEventFromDay').onclick = () => { closeOverlay('daySheet'); openEventEditor(null); };
   $('evAllDay').onchange = updateTimeRow;
   $('evSave').onclick = saveEvent;
