@@ -303,6 +303,9 @@ async function deleteEvent() {
 function openMemberEditor(m) {
   state.editingMemberId = m ? m.id : '';
   state.memberPhoto = m ? m['写真'] : '';
+  photoEdit.img = null;
+  $('photoAdjust').classList.add('hidden');
+  $('mPhoto').value = '';
   $('memberModalTitle').textContent = m ? '家族を編集' : '家族を追加';
   $('mName').value = m ? m['名前'] : '';
   $('mColor').value = m && /^#[0-9a-fA-F]{6}$/.test(m['色']) ? m['色'] : '#4a7cf0';
@@ -326,24 +329,77 @@ function updatePhotoPreview() {
   }
 }
 
+// 写真トリミング編集（ドラッグ=位置 / スライダー=拡大率）
+const photoEdit = { img: null, scale: 1, cx: 0.5, cy: 0.5 };
+
 function handlePhoto(file) {
   const reader = new FileReader();
   reader.onload = () => {
     const img = new Image();
     img.onload = () => {
-      const size = 96;
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const min = Math.min(img.width, img.height);
-      ctx.drawImage(img, (img.width - min) / 2, (img.height - min) / 2, min, min, 0, 0, size, size);
-      state.memberPhoto = canvas.toDataURL('image/jpeg', 0.7);
-      updatePhotoPreview();
+      photoEdit.img = img;
+      photoEdit.scale = 1;
+      photoEdit.cx = 0.5;
+      photoEdit.cy = 0.5;
+      $('mZoom').value = '1';
+      $('photoAdjust').classList.remove('hidden');
+      renderPhotoCrop();
     };
     img.src = reader.result;
   };
   reader.readAsDataURL(file);
+}
+
+function renderPhotoCrop() {
+  const img = photoEdit.img;
+  if (!img) return;
+  const crop = Math.min(img.width, img.height) / photoEdit.scale;
+  // 切り抜き中心を画像内に収める
+  const cx = Math.min(Math.max(photoEdit.cx * img.width, crop / 2), img.width - crop / 2);
+  const cy = Math.min(Math.max(photoEdit.cy * img.height, crop / 2), img.height - crop / 2);
+  photoEdit.cx = cx / img.width;
+  photoEdit.cy = cy / img.height;
+  const size = 192;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  canvas.getContext('2d').drawImage(img, cx - crop / 2, cy - crop / 2, crop, crop, 0, 0, size, size);
+  state.memberPhoto = canvas.toDataURL('image/jpeg', 0.75);
+  updatePhotoPreview();
+}
+
+function bindPhotoAdjust() {
+  const preview = $('mPhotoPreview');
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  let raf = 0;
+  preview.addEventListener('pointerdown', (e) => {
+    if (!photoEdit.img) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    try { preview.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  preview.addEventListener('pointermove', (e) => {
+    if (!dragging || !photoEdit.img) return;
+    const img = photoEdit.img;
+    const crop = Math.min(img.width, img.height) / photoEdit.scale;
+    const previewPx = preview.clientWidth;
+    // 指の移動方向に画像が付いてくるよう中心を逆方向へ
+    photoEdit.cx -= (e.clientX - lastX) * crop / (previewPx * img.width);
+    photoEdit.cy -= (e.clientY - lastY) * crop / (previewPx * img.height);
+    lastX = e.clientX;
+    lastY = e.clientY;
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderPhotoCrop(); });
+  });
+  const end = () => { dragging = false; };
+  preview.addEventListener('pointerup', end);
+  preview.addEventListener('pointercancel', end);
+  $('mZoom').oninput = () => {
+    photoEdit.scale = Number($('mZoom').value);
+    renderPhotoCrop();
+  };
 }
 
 async function saveMember() {
@@ -531,6 +587,7 @@ function bindEvents() {
   $('mSave').onclick = saveMember;
   $('mDelete').onclick = deleteMember;
   $('mPhoto').onchange = (e) => e.target.files[0] && handlePhoto(e.target.files[0]);
+  bindPhotoAdjust();
   $('mName').oninput = updatePhotoPreview;
   $('mColor').oninput = updatePhotoPreview;
   $('sAddMember').onclick = () => openMemberEditor(null);
