@@ -116,6 +116,10 @@
     <label>メールアドレス（通知の宛先）
       <input type="email" id="mEmail" placeholder="example@gmail.com">
     </label>
+    <label>GoogleカレンダーID（取込用・通常はGmailアドレス）
+      <input type="email" id="mGcal" placeholder="example@gmail.com">
+    </label>
+    <p class="hint-note">※ 取込むには、本人のGoogleカレンダー設定で you0810jmsdf@gmail.com に「予定の表示」権限で共有してください（初回1回のみ）</p>
     <label class="toggle-row">夕方の翌日予定通知を受け取る
       <input type="checkbox" id="mNotify" checked>
     </label>
@@ -144,6 +148,7 @@
     <div id="sMemberList" class="settings-member-list"></div>
     <button id="sAddMember" class="btn-secondary">＋ 家族を追加</button>
     <hr>
+    <button id="sSyncGcal" class="btn-secondary">Googleカレンダーを今すぐ同期</button>
     <button id="sNotifyTest" class="btn-secondary">通知メールを今すぐテスト送信</button>
     <button id="sReload" class="btn-secondary">データを再読み込み</button>
     <div class="modal-actions">

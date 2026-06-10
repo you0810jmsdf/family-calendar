@@ -198,9 +198,10 @@ function openDaySheet(dstr) {
       if (!m) return '';
       return `<div class="mini" style="${avatarStyle(m)}">${avatarInitial(m)}</div>`;
     }).join('');
+    const gcalMark = ev['取込元'] === 'gcal' ? '📅 ' : '';
     item.innerHTML = `<div class="bar" style="background:${eventColor(ev)}"></div>
       <div class="info"><div class="t">${esc(ev['タイトル'])}</div>
-      <div class="sub">${esc(time)}${esc(period)}${ev['メモ'] ? ' ・ ' + esc(ev['メモ']) : ''}</div></div>
+      <div class="sub">${gcalMark}${esc(time)}${esc(period)}${ev['メモ'] ? ' ・ ' + esc(ev['メモ']) : ''}</div></div>
       <div class="faces">${faces}</div>`;
     item.onclick = () => { closeOverlay('daySheet'); openEventEditor(ev); };
     list.appendChild(item);
@@ -227,6 +228,9 @@ function openEventEditor(ev) {
   renderEvMemberSelect();
   updateTimeRow();
   $('eventModal').classList.remove('hidden');
+  if (ev && ev['取込元'] === 'gcal') {
+    toast('Googleカレンダー取込予定です。編集・削除しても次回同期で元に戻ります');
+  }
 }
 
 function renderEvMemberSelect() {
@@ -269,6 +273,12 @@ async function saveEvent() {
     'メモ': $('evMemo').value.trim(),
     'Gmail転記': $('evGmail').checked ? 'ON' : 'OFF',
   };
+  // Googleカレンダー取込予定の編集時はタグを引き継ぐ（次回同期で洗い替え対象に保つ）
+  const orig = state.events.find((x) => x.id === state.editingEventId);
+  if (orig && orig['取込元']) {
+    ev['取込元'] = orig['取込元'];
+    ev['取込キー'] = orig['取込キー'];
+  }
   await busy(async () => {
     const data = await api('saveEvent', { event: ev });
     applyData(data);
@@ -297,6 +307,7 @@ function openMemberEditor(m) {
   $('mName').value = m ? m['名前'] : '';
   $('mColor').value = m && /^#[0-9a-fA-F]{6}$/.test(m['色']) ? m['色'] : '#4a7cf0';
   $('mEmail').value = m ? m['メール'] : '';
+  $('mGcal').value = m ? (m['GoogleカレンダーID'] || '') : '';
   $('mNotify').checked = m ? m['通知'] === 'ON' : true;
   $('mDelete').classList.toggle('hidden', !m);
   updatePhotoPreview();
@@ -344,6 +355,7 @@ async function saveMember() {
     '色': $('mColor').value,
     '写真': state.memberPhoto,
     'メール': $('mEmail').value.trim(),
+    'GoogleカレンダーID': $('mGcal').value.trim(),
     '通知': $('mNotify').checked ? 'ON' : 'OFF',
     '表示順': state.editingMemberId
       ? (memberById(state.editingMemberId) || {})['表示順'] || String(state.members.length)
@@ -524,6 +536,12 @@ function bindEvents() {
   $('sAddMember').onclick = () => openMemberEditor(null);
   $('sSave').onclick = saveSettings;
   $('sReload').onclick = () => busy(async () => { await loadAll(); renderAll(); toast('再読み込みしました'); });
+  $('sSyncGcal').onclick = () => busy(async () => {
+    const data = await api('syncNow');
+    applyData(data);
+    renderGrid();
+    toast((data.sync || []).map((r) => `${r.member ? r.member + ': ' : ''}${r.status}`).join(' / '));
+  });
   $('sNotifyTest').onclick = () => busy(async () => {
     const data = await api('notifyNow');
     toast(data.sent && data.sent.length ? `送信: ${data.sent.join('・')}` : '明日の予定がある通知対象者がいません');

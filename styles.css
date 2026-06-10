@@ -212,6 +212,7 @@ body {
 .settings-member-row .meta { font-size: 11px; color: var(--muted); }
 hr { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
 .version-note { font-size: 11px; color: var(--muted); text-align: center; margin-top: 12px; }
+.hint-note { font-size: 11px; color: var(--muted); line-height: 1.5; margin: -6px 0 12px; }
 
 /* ---------- アバター編集 ---------- */
 .avatar-edit { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
