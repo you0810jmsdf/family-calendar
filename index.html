@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>家族カレンダー</title>
+<meta name="description" content="家族で共有するシンプルなカレンダー">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="家族カレンダー">
+<meta name="theme-color" content="#4a7cf0">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- 初回セットアップ画面 -->
+<div id="setupScreen" class="setup-screen hidden">
+  <div class="setup-box">
+    <img src="icon-192.png" alt="" class="setup-icon">
+    <h1>家族カレンダー</h1>
+    <p>家族コードを入力してください</p>
+    <input type="text" id="familyKeyInput" placeholder="家族コード" autocomplete="off">
+    <button id="connectBtn" class="btn-primary">はじめる</button>
+    <p id="setupError" class="error-msg"></p>
+  </div>
+</div>
+
+<!-- メイン画面 -->
+<div id="mainScreen" class="hidden">
+  <header class="app-header">
+    <button id="prevMonth" class="nav-btn" aria-label="前の月">‹</button>
+    <div class="month-title" id="monthTitle">2026年6月</div>
+    <button id="nextMonth" class="nav-btn" aria-label="次の月">›</button>
+    <button id="todayBtn" class="today-btn">今日</button>
+    <button id="settingsBtn" class="icon-btn" aria-label="設定">⚙</button>
+  </header>
+
+  <div class="member-bar" id="memberBar"></div>
+
+  <div class="weekday-row">
+    <div class="wd sun">日</div><div class="wd">月</div><div class="wd">火</div>
+    <div class="wd">水</div><div class="wd">木</div><div class="wd">金</div><div class="wd sat">土</div>
+  </div>
+  <div class="month-grid" id="monthGrid"></div>
+
+  <div id="offlineBanner" class="offline-banner hidden">オフライン表示中（前回取得データ）</div>
+
+  <button id="fab" class="fab" aria-label="予定を追加">＋</button>
+</div>
+
+<!-- 日別ボトムシート -->
+<div id="daySheet" class="sheet hidden">
+  <div class="sheet-backdrop" data-close="daySheet"></div>
+  <div class="sheet-body">
+    <div class="sheet-handle"></div>
+    <h2 id="daySheetTitle"></h2>
+    <div id="daySheetList" class="day-event-list"></div>
+    <button id="addEventFromDay" class="btn-primary">＋ この日に予定を追加</button>
+  </div>
+</div>
+
+<!-- 予定エディタ -->
+<div id="eventModal" class="modal hidden">
+  <div class="modal-backdrop" data-close="eventModal"></div>
+  <div class="modal-body">
+    <h2 id="eventModalTitle">予定を追加</h2>
+    <label>タイトル
+      <input type="text" id="evTitle" placeholder="例：参観日">
+    </label>
+    <div class="row2">
+      <label>開始日 <input type="date" id="evStart"></label>
+      <label>終了日 <input type="date" id="evEnd"></label>
+    </div>
+    <label class="toggle-row">終日
+      <input type="checkbox" id="evAllDay" checked>
+    </label>
+    <div class="row2" id="timeRow">
+      <label>開始時刻 <input type="time" id="evTimeStart"></label>
+      <label>終了時刻 <input type="time" id="evTimeEnd"></label>
+    </div>
+    <div class="field-label">関係する家族（タップで選択）</div>
+    <div id="evMembers" class="member-select"></div>
+    <label>メモ
+      <textarea id="evMemo" rows="2"></textarea>
+    </label>
+    <label class="toggle-row">Gmailへ転記（関係者へメール送信）
+      <input type="checkbox" id="evGmail">
+    </label>
+    <div class="modal-actions">
+      <button id="evDelete" class="btn-danger hidden">削除</button>
+      <button id="evSave" class="btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- メンバーエディタ -->
+<div id="memberModal" class="modal hidden">
+  <div class="modal-backdrop" data-close="memberModal"></div>
+  <div class="modal-body">
+    <h2 id="memberModalTitle">家族を追加</h2>
+    <div class="avatar-edit">
+      <div id="mPhotoPreview" class="avatar-preview">？</div>
+      <label class="btn-secondary photo-btn">顔写真を選ぶ
+        <input type="file" id="mPhoto" accept="image/*" hidden>
+      </label>
+    </div>
+    <label>名前
+      <input type="text" id="mName" placeholder="例：ゆうき">
+    </label>
+    <label>カラー
+      <input type="color" id="mColor" value="#4a7cf0">
+    </label>
+    <label>メールアドレス（通知の宛先）
+      <input type="email" id="mEmail" placeholder="example@gmail.com">
+    </label>
+    <label class="toggle-row">夕方の翌日予定通知を受け取る
+      <input type="checkbox" id="mNotify" checked>
+    </label>
+    <div class="modal-actions">
+      <button id="mDelete" class="btn-danger hidden">削除</button>
+      <button id="mSave" class="btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 設定 -->
+<div id="settingsModal" class="modal hidden">
+  <div class="modal-backdrop" data-close="settingsModal"></div>
+  <div class="modal-body">
+    <h2>設定</h2>
+    <label>家族の名前
+      <input type="text" id="sFamilyName">
+    </label>
+    <label>通知時刻（毎日この時間台に翌日の予定をお知らせ）
+      <select id="sNotifyHour"></select>
+    </label>
+    <label class="toggle-row">通知音（Phase 2のアプリ版で有効になります）
+      <input type="checkbox" id="sSound">
+    </label>
+    <div class="field-label">家族の管理</div>
+    <div id="sMemberList" class="settings-member-list"></div>
+    <button id="sAddMember" class="btn-secondary">＋ 家族を追加</button>
+    <hr>
+    <button id="sNotifyTest" class="btn-secondary">通知メールを今すぐテスト送信</button>
+    <button id="sReload" class="btn-secondary">データを再読み込み</button>
+    <div class="modal-actions">
+      <button id="sSave" class="btn-primary">設定を保存</button>
+    </div>
+    <p class="version-note">家族カレンダー Phase 1（PWA版）</p>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
