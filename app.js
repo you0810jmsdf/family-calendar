@@ -203,10 +203,39 @@ function openDaySheet(dstr) {
       <div class="info"><div class="t">${esc(ev['タイトル'])}</div>
       <div class="sub">${gcalMark}${esc(time)}${esc(period)}${ev['メモ'] ? ' ・ ' + esc(ev['メモ']) : ''}</div></div>
       <div class="faces">${faces}</div>`;
+    const lineBtn = document.createElement('button');
+    lineBtn.type = 'button';
+    lineBtn.className = 'line-btn';
+    lineBtn.textContent = 'LINE';
+    lineBtn.onclick = (e) => {
+      e.stopPropagation();
+      shareEventToLine(ev);
+    };
+    item.appendChild(lineBtn);
     item.onclick = () => { closeOverlay('daySheet'); openEventEditor(ev); };
     list.appendChild(item);
   });
   $('daySheet').classList.remove('hidden');
+}
+
+// ---------- LINE共有 ----------
+
+function fmtDateJP(dstr) {
+  const d = new Date(dstr + 'T00:00:00');
+  const wd = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+  return `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
+}
+
+function shareEventToLine(ev) {
+  const end = ev['終了日'] || ev['開始日'];
+  const period = ev['開始日'] === end ? fmtDateJP(ev['開始日']) : `${fmtDateJP(ev['開始日'])}〜${fmtDateJP(end)}`;
+  const time = ev['終日'] === 'ON' ? '終日' : `${ev['開始時刻'] || ''}${ev['終了時刻'] ? '〜' + ev['終了時刻'] : ''}`;
+  const names = (ev['メンバー'] || '').split(',').filter(String)
+    .map((id) => (memberById(id) || {})['名前']).filter(Boolean).join('・');
+  let text = `【家族カレンダー】\n■ ${ev['タイトル']}\n${period} ${time}`;
+  if (names) text += `\n対象: ${names}`;
+  if (ev['メモ']) text += `\nメモ: ${ev['メモ']}`;
+  window.location.href = 'https://line.me/R/share?text=' + encodeURIComponent(text);
 }
 
 // ---------- 予定エディタ ----------
@@ -310,6 +339,7 @@ function openMemberEditor(m) {
   $('mName').value = m ? m['名前'] : '';
   $('mColor').value = m && /^#[0-9a-fA-F]{6}$/.test(m['色']) ? m['色'] : '#4a7cf0';
   $('mEmail').value = m ? m['メール'] : '';
+  $('mPhone').value = m ? (m['電話番号'] || '') : '';
   $('mGcal').value = m ? (m['GoogleカレンダーID'] || '') : '';
   $('mNotify').checked = m ? m['通知'] === 'ON' : true;
   $('mDelete').classList.toggle('hidden', !m);
@@ -411,6 +441,7 @@ async function saveMember() {
     '色': $('mColor').value,
     '写真': state.memberPhoto,
     'メール': $('mEmail').value.trim(),
+    '電話番号': $('mPhone').value.trim(),
     'GoogleカレンダーID': $('mGcal').value.trim(),
     '通知': $('mNotify').checked ? 'ON' : 'OFF',
     '表示順': state.editingMemberId
@@ -459,12 +490,22 @@ function renderSettingsMembers() {
   const list = $('sMemberList');
   list.innerHTML = '';
   state.members.forEach((m) => {
-    const row = document.createElement('button');
-    row.type = 'button';
+    const row = document.createElement('div');
     row.className = 'settings-member-row';
     row.innerHTML = `<div class="avatar" style="${avatarStyle(m)};border-color:${m['色']}">${avatarInitial(m)}</div>
       <div class="nm">${esc(m['名前'])}</div>
       <div class="meta">${m['メール'] ? '📧' : ''}${m['通知'] === 'ON' ? '🔔' : ''}</div>`;
+    if (m['電話番号']) {
+      const tel = document.createElement('button');
+      tel.type = 'button';
+      tel.className = 'tel-btn';
+      tel.textContent = '📞 電話';
+      tel.onclick = (e) => {
+        e.stopPropagation();
+        window.location.href = 'tel:' + m['電話番号'].replace(/[^\d+]/g, '');
+      };
+      row.appendChild(tel);
+    }
     row.onclick = () => openMemberEditor(m);
     list.appendChild(row);
   });
