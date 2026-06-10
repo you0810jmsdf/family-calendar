@@ -1,5 +1,7 @@
-# GASバックエンド（APIキーを含むため非公開）
+# GASバックエンド（APIキーを含むため非公開・名称違いも全て除外）
 gas/
+gas_*/
+*.clasp.json
 # 内部資料
 docs/
 .claude/

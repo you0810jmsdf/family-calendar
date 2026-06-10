@@ -1,7 +1,7 @@
 /* 家族カレンダー Phase 1（PWA） */
 'use strict';
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbzakKEwcFRNERInAYPbxvU_ZLRcCwDj8F4wpL6B49bc6lBolGulXfCXeUFaQsYWG6DhTw/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
 const LS_CACHE = 'famcal_cache';
 const LS_HIDDEN = 'famcal_hidden';
