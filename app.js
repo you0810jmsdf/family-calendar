@@ -331,8 +331,20 @@ function shareEventToLine(ev) {
 
 // ---------- 予定エディタ ----------
 
+function newId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function openEventEditor(ev) {
-  state.editingEventId = ev ? ev.id : '';
+  const isNew = !ev || !ev.id;
+  // 新規予定はここでIDを確定させる。保存ボタンが多重タップされても
+  // 同じIDで送信されるため、サーバー側は同じ行を上書きするだけになり重複行が生まれない
+  state.editingEventId = isNew ? newId() : ev.id;
   $('eventModalTitle').textContent = ev ? '予定を編集' : '予定を追加';
   $('evTitle').value = ev ? ev['タイトル'] : '';
   const base = state.selectedDate || todayStr();
@@ -343,7 +355,9 @@ function openEventEditor(ev) {
   $('evTimeEnd').value = ev ? ev['終了時刻'] : '';
   $('evMemo').value = ev ? ev['メモ'] : '';
   $('evGmail').checked = ev ? ev['Gmail転記'] === 'ON' : false;
-  $('evDelete').classList.toggle('hidden', !ev);
+  $('evDelete').classList.toggle('hidden', isNew);
+  $('evSave').disabled = false;
+  $('evSave').textContent = '保存';
   state.evSelectedMembers = new Set((ev ? ev['メンバー'] : '').split(',').filter(String));
   renderEvMemberSelect();
   updateTimeRow();
@@ -399,6 +413,10 @@ async function saveEvent() {
     ev['取込元'] = orig['取込元'];
     ev['取込キー'] = orig['取込キー'];
   }
+  // disabledにするとブラウザは以降のクリックを無視するため、多重タップでも二重送信されない
+  const saveBtn = $('evSave');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '保存中…';
   await busy(async () => {
     const data = await api('saveEvent', { event: ev });
     applyData(data);
@@ -406,6 +424,8 @@ async function saveEvent() {
     renderGrid();
     toast(data.mail ? `保存しました（Gmail: ${data.mail}）` : '保存しました');
   });
+  saveBtn.disabled = false;
+  saveBtn.textContent = '保存';
 }
 
 async function deleteEvent() {
@@ -668,11 +688,9 @@ async function runAiParse() {
     closeOverlay('aiModal');
     // 解釈結果を新規予定としてエディタに流し込み、ユーザーが確認してから保存
     const ev = data.event;
-    ev.id = '';
     state.selectedDate = ev['開始日'];
+    // openEventEditorがev.id未設定＝新規と判定し、IDの発行と削除ボタン非表示を行う
     openEventEditor(ev);
-    state.editingEventId = '';
-    $('evDelete').classList.add('hidden');
     $('eventModalTitle').textContent = '予定を追加（AI作成・内容を確認してください）';
   } catch (e) {
     toast('エラー: ' + e.message);
