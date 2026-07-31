@@ -292,7 +292,7 @@ function openDaySheet(dstr) {
     const gcalMark = ev['取込元'] === 'gcal' ? '📅 ' : '';
     item.innerHTML = `<div class="bar" style="background:${eventColor(ev)}"></div>
       <div class="info"><div class="t">${esc(ev['タイトル'])}</div>
-      <div class="sub">${gcalMark}${esc(time)}${esc(period)}${ev['メモ'] ? ' ・ ' + esc(ev['メモ']) : ''}</div></div>
+      <div class="sub">${gcalMark}${esc(time)}${esc(period)}${ev['メモ'] ? ' ・ ' + linkify(ev['メモ']) : ''}</div></div>
       <div class="faces">${faces}</div>`;
     const lineBtn = document.createElement('button');
     lineBtn.type = 'button';
@@ -303,7 +303,12 @@ function openDaySheet(dstr) {
       shareEventToLine(ev);
     };
     item.appendChild(lineBtn);
-    item.onclick = () => { closeOverlay('daySheet'); openEventEditor(ev); };
+    // メモ内リンクをタップしたときは編集画面を開かず、リンク先へ飛ばす
+    item.onclick = (e) => {
+      if (e.target.closest && e.target.closest('a.memo-link')) return;
+      closeOverlay('daySheet');
+      openEventEditor(ev);
+    };
     list.appendChild(item);
   });
   $('daySheet').classList.remove('hidden');
@@ -354,6 +359,7 @@ function openEventEditor(ev) {
   $('evTimeStart').value = ev ? ev['開始時刻'] : '';
   $('evTimeEnd').value = ev ? ev['終了時刻'] : '';
   $('evMemo').value = ev ? ev['メモ'] : '';
+  renderMemoLinks();
   $('evGmail').checked = ev ? ev['Gmail転記'] === 'ON' : false;
   $('evDelete').classList.toggle('hidden', isNew);
   $('evSave').disabled = false;
@@ -365,6 +371,28 @@ function openEventEditor(ev) {
   if (ev && ev['取込元'] === 'gcal') {
     toast('Googleカレンダー取込予定です。編集・削除しても次回同期で元に戻ります');
   }
+}
+
+// 編集画面のメモはtextareaでリンクにできないため、直下にタップできるリンクを並べる
+function renderMemoLinks() {
+  const box = $('evMemoLinks');
+  const urls = [...new Set(extractUrls($('evMemo').value))];
+  box.innerHTML = '';
+  box.classList.toggle('hidden', urls.length === 0);
+  if (!urls.length) return;
+  const label = document.createElement('div');
+  label.className = 'field-label';
+  label.textContent = 'メモ内のリンク（タップで開きます）';
+  box.appendChild(label);
+  urls.forEach((u) => {
+    const a = document.createElement('a');
+    a.className = 'memo-link-chip';
+    a.href = u;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = u;
+    box.appendChild(a);
+  });
 }
 
 function renderEvMemberSelect() {
@@ -708,6 +736,34 @@ function esc(s) {
   }[c]));
 }
 
+// メモ欄に書いたURLを拾う（末尾の句読点・閉じ括弧はURLに含めない）
+const URL_RE = /https?:\/\/[^\s<>"'　]+/g;
+const URL_TAIL_RE = /[.,、。）)\]】＞>]+$/;
+
+function extractUrls(s) {
+  return (String(s || '').match(URL_RE) || [])
+    .map((u) => u.replace(URL_TAIL_RE, ''))
+    .filter(Boolean);
+}
+
+// メモ内のURLだけをリンクにする。URL以外はエスケープしたまま表示する
+function linkify(s) {
+  const str = String(s || '');
+  let out = '';
+  let last = 0;
+  let m;
+  URL_RE.lastIndex = 0;
+  while ((m = URL_RE.exec(str)) !== null) {
+    const url = m[0].replace(URL_TAIL_RE, '');
+    out += esc(str.slice(last, m.index));
+    out += `<a href="${esc(url)}" class="memo-link" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`;
+    out += esc(m[0].slice(url.length));
+    last = m.index + m[0].length;
+  }
+  out += esc(str.slice(last));
+  return out;
+}
+
 function closeOverlay(id) {
   $(id).classList.add('hidden');
 }
@@ -818,6 +874,7 @@ function bindEvents() {
   $('aiImage').onchange = (e) => e.target.files[0] && handleAiImage(e.target.files[0]);
   $('addEventFromDay').onclick = () => { closeOverlay('daySheet'); openEventEditor(null); };
   $('evAllDay').onchange = updateTimeRow;
+  $('evMemo').oninput = renderMemoLinks;
   $('evSave').onclick = saveEvent;
   $('evDelete').onclick = deleteEvent;
   $('mSave').onclick = saveMember;

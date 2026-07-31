@@ -220,6 +220,19 @@ body {
 }
 .empty-note { color: var(--muted); font-size: 14px; text-align: center; padding: 18px 0; }
 
+/* ---------- メモ内のリンク ---------- */
+/* 日別一覧のメモに書かれたURL。指で押せるよう下線＋上下の余白を持たせる */
+.memo-link {
+  color: var(--accent); text-decoration: underline;
+  word-break: break-all; padding: 3px 0;
+}
+/* 編集画面はtextareaのためリンクにできないので、直下に一覧として並べる */
+.memo-links { margin: -6px 0 14px; }
+.memo-link-chip {
+  display: block; color: var(--accent); font-size: 13px;
+  text-decoration: underline; word-break: break-all; padding: 7px 0;
+}
+
 /* ---------- 設定のメンバー一覧 ---------- */
 .settings-member-list { margin-bottom: 10px; }
 .settings-member-row {
