@@ -1,5 +1,5 @@
 /* 家族カレンダー Service Worker（アプリシェルのキャッシュ） */
-const CACHE = 'famcal-v10';
+const CACHE = 'famcal-v11';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
