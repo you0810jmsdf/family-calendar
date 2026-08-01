@@ -736,9 +736,10 @@ function esc(s) {
   }[c]));
 }
 
-// メモ欄に書いたURLを拾う（末尾の句読点・閉じ括弧はURLに含めない）
-const URL_RE = /https?:\/\/[^\s<>"'　]+/g;
-const URL_TAIL_RE = /[.,、。）)\]】＞>]+$/;
+// メモ欄に書いたURLを拾う。全角の括弧・句読点はURLの区切りとして扱い、
+// 末尾に付いた句読点・閉じ括弧・ひらがな（「〜です」等の助詞）はURLに含めない
+const URL_RE = /https?:\/\/[^\s<>"'　、。，．！？；：（）「」『』【】〈〉《》〔〕｛｝＜＞”’…・]+/g;
+const URL_TAIL_RE = /(?:[.,:;!?)\]]|[ぁ-ん])+$/;
 
 function extractUrls(s) {
   return (String(s || '').match(URL_RE) || [])
