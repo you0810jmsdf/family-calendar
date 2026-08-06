@@ -367,10 +367,8 @@ function openEventEditor(ev) {
   state.evSelectedMembers = new Set((ev ? ev['メンバー'] : '').split(',').filter(String));
   renderEvMemberSelect();
   updateTimeRow();
+  applyGcalLock(ev);
   $('eventModal').classList.remove('hidden');
-  if (ev && ev['取込元'] === 'gcal') {
-    toast('Googleカレンダー取込予定です。編集・削除しても次回同期で元に戻ります');
-  }
 }
 
 // 編集画面のメモはtextareaでリンクにできないため、直下にタップできるリンクを並べる
@@ -411,6 +409,23 @@ function renderEvMemberSelect() {
     };
     box.appendChild(btn);
   });
+}
+
+// Googleカレンダー取込予定の日付をアプリ側で変えても、次回の同期で取込元の内容に
+// 戻ってしまう（行のIDと取込キーが取込元の元日時で作られるため）。黙って消える事故を
+// 防ぐため、日付・時刻は編集不可にし、Googleカレンダー側で直す導線を出す
+function applyGcalLock(ev) {
+  const locked = !!(ev && ev['取込元'] === 'gcal');
+  $('evGcalNotice').classList.toggle('hidden', !locked);
+  ['evStart', 'evEnd', 'evAllDay', 'evTimeStart', 'evTimeEnd'].forEach((id) => {
+    $(id).disabled = locked;
+  });
+  if (locked) {
+    const d = String(ev['開始日'] || '').split('-');
+    $('evGcalOpen').href = d.length === 3
+      ? `https://calendar.google.com/calendar/u/0/r/day/${d[0]}/${Number(d[1])}/${Number(d[2])}`
+      : 'https://calendar.google.com/calendar/u/0/r';
+  }
 }
 
 function updateTimeRow() {

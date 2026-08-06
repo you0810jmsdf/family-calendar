@@ -87,6 +87,11 @@
   <div class="modal-backdrop" data-close="eventModal"></div>
   <div class="modal-body">
     <h2 id="eventModalTitle">予定を追加</h2>
+    <div id="evGcalNotice" class="gcal-notice hidden">
+      <p><strong>Googleカレンダーから取り込んだ予定です。</strong></p>
+      <p>日付・時刻はこの画面では変更できません。ここで変えても次回の同期でGoogleカレンダーの内容に戻ってしまうためです。日付を動かすときはGoogleカレンダー側で変更してください（同期すると反映されます）。</p>
+      <a id="evGcalOpen" class="btn-secondary" href="#" target="_blank" rel="noopener noreferrer">Googleカレンダーでこの日を開く</a>
+    </div>
     <label>タイトル
       <input type="text" id="evTitle" placeholder="例：参観日">
     </label>
