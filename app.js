@@ -92,14 +92,28 @@ function isEventVisible(ev) {
   return ids.some((id) => !state.hidden.has(id));
 }
 
-function eventColor(ev) {
-  if (isHoliday(ev)) return '#d66';
+// 予定に関係する家族の色を表示順（設定の家族の並び）で返す。
+// 以前は「メンバー欄に保存された順の先頭」だったため、誰の色になるかが分かりにくかった
+function eventColors(ev) {
+  if (isHoliday(ev)) return ['#d66'];
   const ids = (ev['メンバー'] || '').split(',').filter(String);
-  for (const id of ids) {
-    const m = state.members.find((x) => x.id === id);
-    if (m) return m['色'] || '#4a7cf0';
-  }
-  return '#9aa3af';
+  const cols = ids
+    .map((id) => memberById(id))
+    .filter(Boolean)
+    .sort((a, b) => Number(a['表示順'] || 99) - Number(b['表示順'] || 99))
+    .map((m) => m['色'] || '#4a7cf0');
+  return cols.length ? cols : ['#9aa3af'];
+}
+
+// 複数人に関係する予定は、関係する家族の色を並べた帯にして一目で分かるようにする
+function eventBackground(ev, dir) {
+  const cols = eventColors(ev);
+  if (cols.length === 1) return cols[0];
+  const step = 100 / cols.length;
+  const stops = cols
+    .map((c, i) => `${c} ${(i * step).toFixed(2)}%, ${c} ${((i + 1) * step).toFixed(2)}%`)
+    .join(', ');
+  return `linear-gradient(${dir || 'to right'}, ${stops})`;
 }
 
 function memberById(id) {
@@ -243,7 +257,7 @@ function renderGrid() {
         `left:calc(${c0} * 100% / 7 + 1px);` +
         `width:calc(${c1 - c0 + 1} * 100% / 7 - 3px);` +
         `top:${LANE_TOP + lane * LANE_H}px;` +
-        `background:${eventColor(ev)}`;
+        `background:${eventBackground(ev)}`;
       bar.textContent = ev['タイトル'];
       bar.onclick = (e) => {
         e.stopPropagation();
@@ -290,7 +304,7 @@ function openDaySheet(dstr) {
       return `<div class="mini" style="${avatarStyle(m)}">${avatarInitial(m)}</div>`;
     }).join('');
     const gcalMark = ev['取込元'] === 'gcal' ? '📅 ' : '';
-    item.innerHTML = `<div class="bar" style="background:${eventColor(ev)}"></div>
+    item.innerHTML = `<div class="bar" style="background:${eventBackground(ev, 'to bottom')}"></div>
       <div class="info"><div class="t">${esc(ev['タイトル'])}</div>
       <div class="sub">${gcalMark}${esc(time)}${esc(period)}${ev['メモ'] ? ' ・ ' + linkify(ev['メモ']) : ''}</div></div>
       <div class="faces">${faces}</div>`;
