@@ -1,6 +1,9 @@
 /* 家族カレンダー Phase 1（PWA） */
 'use strict';
 
+// 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
+const APP_VERSION = 'v17';
+
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
 const LS_CACHE = 'famcal_cache';
@@ -842,6 +845,25 @@ function closeOverlay(id) {
   $(id).classList.add('hidden');
 }
 
+// 端末に古いアプリ本体が残ってしまったときの手段。保存済みのアプリ本体と
+// Service Workerを消してから読み直す（予定データはサーバー側にあるので消えない）
+async function hardReload() {
+  if (!confirm('アプリを最新版にします。予定データは消えません。続けますか？')) return;
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch (e) {
+    // 消せなくても読み直しは試す
+  }
+  location.reload();
+}
+
 let toastTimer;
 function toast(msg) {
   const t = $('toast');
@@ -960,6 +982,8 @@ function bindEvents() {
   $('sAddMember').onclick = () => openMemberEditor(null);
   $('sSave').onclick = saveSettings;
   $('sReload').onclick = () => busy(async () => { await loadAll(); renderAll(); toast('再読み込みしました'); });
+  $('sHardReload').onclick = hardReload;
+  $('sVersion').textContent = '家族カレンダー ' + APP_VERSION + '（PWA版）';
   $('sSyncGcal').onclick = () => busy(async () => {
     const data = await api('syncNow');
     applyData(data);
