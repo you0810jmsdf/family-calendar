@@ -451,15 +451,25 @@ function gcalTimeChanged(orig, ev) {
 // 移動した回は取込キー（元の開始日時）が変わって別の行として入るため、
 // 同期後に元の行を消して重複を残さない
 async function moveGcalEvent(orig, ev) {
-  await api('updateGcalTime', {
-    gkey: orig['取込キー'],
-    startDate: ev['開始日'],
-    endDate: ev['終了日'],
-    allDay: ev['終日'],
-    startTime: ev['開始時刻'],
-    endTime: ev['終了時刻'],
-  });
-  applyData(await api('syncNow'));
+  try {
+    await api('updateGcalTime', {
+      gkey: orig['取込キー'],
+      startDate: ev['開始日'],
+      endDate: ev['終了日'],
+      allDay: ev['終日'],
+      startTime: ev['開始時刻'],
+      endTime: ev['終了時刻'],
+    });
+  } catch (e) {
+    // ここで失敗した場合、Googleカレンダーは変更されていない
+    throw new Error(`①Googleカレンダーの更新に失敗（${e.message}）。予定は変更されていません`);
+  }
+  try {
+    applyData(await api('syncNow'));
+  } catch (e) {
+    // Googleカレンダーは動いているので、取り込み直しだけやり直せば復旧する
+    throw new Error(`②取り込み直しに失敗（${e.message}）。Googleカレンダー側は変更済みなので、⚙設定の「Googleカレンダーを今すぐ同期」を押してください`);
+  }
   if (state.events.some((x) => x.id === orig.id)) {
     try {
       applyData(await api('deleteEvent', { id: orig.id }));
