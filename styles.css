@@ -220,6 +220,14 @@ body {
 }
 .empty-note { color: var(--muted); font-size: 14px; text-align: center; padding: 18px 0; }
 
+/* ---------- Googleカレンダー取込予定の注意書き ---------- */
+.gcal-notice {
+  background: #fff8e1; border: 1px solid #f0d99a; border-radius: 10px;
+  padding: 12px; margin-bottom: 14px; font-size: 13px; line-height: 1.6;
+}
+.gcal-notice p { margin-bottom: 8px; }
+.gcal-notice .btn-secondary { display: block; text-align: center; text-decoration: none; }
+
 /* ---------- メモ内のリンク ---------- */
 /* 日別一覧のメモに書かれたURL。指で押せるよう下線＋上下の余白を持たせる */
 .memo-link {

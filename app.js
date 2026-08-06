@@ -367,10 +367,8 @@ function openEventEditor(ev) {
   state.evSelectedMembers = new Set((ev ? ev['メンバー'] : '').split(',').filter(String));
   renderEvMemberSelect();
   updateTimeRow();
+  applyGcalNotice(ev);
   $('eventModal').classList.remove('hidden');
-  if (ev && ev['取込元'] === 'gcal') {
-    toast('Googleカレンダー取込予定です。編集・削除しても次回同期で元に戻ります');
-  }
 }
 
 // 編集画面のメモはtextareaでリンクにできないため、直下にタップできるリンクを並べる
@@ -413,6 +411,50 @@ function renderEvMemberSelect() {
   });
 }
 
+// 取込予定であることと、日付変更がGoogleカレンダー側へ書き戻される旨を出す
+function applyGcalNotice(ev) {
+  const isGcal = !!(ev && ev['取込元'] === 'gcal');
+  $('evGcalNotice').classList.toggle('hidden', !isGcal);
+  if (isGcal) {
+    const d = String(ev['開始日'] || '').split('-');
+    $('evGcalOpen').href = d.length === 3
+      ? `https://calendar.google.com/calendar/u/0/r/day/${d[0]}/${Number(d[1])}/${Number(d[2])}`
+      : 'https://calendar.google.com/calendar/u/0/r';
+  }
+}
+
+// 取込予定の日付・時刻が変更されたか
+function gcalTimeChanged(orig, ev) {
+  if (!orig || orig['取込元'] !== 'gcal' || !orig['取込キー']) return false;
+  return orig['開始日'] !== ev['開始日'] ||
+    (orig['終了日'] || orig['開始日']) !== ev['終了日'] ||
+    (orig['終日'] === 'ON' ? 'ON' : 'OFF') !== ev['終日'] ||
+    (orig['開始時刻'] || '') !== ev['開始時刻'] ||
+    (orig['終了時刻'] || '') !== ev['終了時刻'];
+}
+
+// 取込予定の日付変更は、Googleカレンダー側のその回を書き換えてから取り込み直す。
+// 移動した回は取込キー（元の開始日時）が変わって別の行として入るため、
+// 同期後に元の行を消して重複を残さない
+async function moveGcalEvent(orig, ev) {
+  await api('updateGcalTime', {
+    gkey: orig['取込キー'],
+    startDate: ev['開始日'],
+    endDate: ev['終了日'],
+    allDay: ev['終日'],
+    startTime: ev['開始時刻'],
+    endTime: ev['終了時刻'],
+  });
+  applyData(await api('syncNow'));
+  if (state.events.some((x) => x.id === orig.id)) {
+    try {
+      applyData(await api('deleteEvent', { id: orig.id }));
+    } catch (e) {
+      // 同期側が取込元に無くなった行を掃除している場合はここで落ちても問題ない
+    }
+  }
+}
+
 function updateTimeRow() {
   $('timeRow').style.display = $('evAllDay').checked ? 'none' : 'flex';
 }
@@ -446,6 +488,13 @@ async function saveEvent() {
   saveBtn.disabled = true;
   saveBtn.textContent = '保存中…';
   await busy(async () => {
+    if (gcalTimeChanged(orig, ev)) {
+      await moveGcalEvent(orig, ev);
+      closeOverlay('eventModal');
+      renderGrid();
+      toast('Googleカレンダーを更新して取り込み直しました');
+      return;
+    }
     const data = await api('saveEvent', { event: ev });
     applyData(data);
     closeOverlay('eventModal');
