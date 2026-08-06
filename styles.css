@@ -172,8 +172,6 @@ body {
   -webkit-appearance: none; appearance: none;
 }
 .modal-body input[type="color"] { margin-top: 4px; width: 64px; height: 40px; border: 1px solid var(--line); border-radius: 8px; background: none; }
-/* 取込予定の日付・時刻など、変更できない項目 */
-.modal-body input:disabled { background: #eceef1; color: #9a9a9a; opacity: 1; }
 .row2 { display: flex; gap: 10px; } .row2 label { flex: 1; }
 .toggle-row {
   display: flex !important; align-items: center; justify-content: space-between;
