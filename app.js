@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v17';
+const APP_VERSION = 'v18';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -748,6 +748,7 @@ let aiImage = null; // { data: base64, mime }
 
 function openAiModal() {
   $('aiText').value = '';
+  $('aiUrl').value = '';
   aiImage = null;
   $('aiImage').value = '';
   $('aiImgPreview').classList.add('hidden');
@@ -778,30 +779,147 @@ function handleAiImage(file) {
 
 async function runAiParse() {
   const text = $('aiText').value.trim();
-  if (!text && !aiImage) return toast('文章を入力するか写真を選んでください');
+  const url = $('aiUrl').value.trim();
+  if (!text && !url && !aiImage) return toast('文章・ホームページ・写真のどれかを入れてください');
+  if (url && !/^https?:\/\//i.test(url)) return toast('ホームページのURLは http:// か https:// から入れてください');
   const btn = $('aiRun');
   btn.disabled = true;
-  btn.textContent = 'AIが考えています…';
+  btn.textContent = url ? 'ホームページを読んでいます…' : 'AIが考えています…';
   try {
-    const payload = { text };
+    const payload = { text, url };
     if (aiImage) {
       payload.image = aiImage.data;
       payload.mime = aiImage.mime;
     }
-    const data = await api('aiParse', payload);
+    const data = await api('aiExtract', payload);
     closeOverlay('aiModal');
-    // 解釈結果を新規予定としてエディタに流し込み、ユーザーが確認してから保存
-    const ev = data.event;
-    state.selectedDate = ev['開始日'];
-    // openEventEditorがev.id未設定＝新規と判定し、IDの発行と削除ボタン非表示を行う
-    openEventEditor(ev);
-    $('eventModalTitle').textContent = '予定を追加（AI作成・内容を確認してください）';
+    const events = data.events || [];
+    if (events.length === 1) {
+      // 1件だけなら選ぶ必要がないので、今までどおり確認用のエディタへ流し込む
+      const ev = events[0];
+      state.selectedDate = ev['開始日'];
+      // openEventEditorがev.id未設定＝新規と判定し、IDの発行と削除ボタン非表示を行う
+      openEventEditor(ev);
+      $('eventModalTitle').textContent = '予定を追加（AI作成・内容を確認してください）';
+    } else {
+      openAiPickModal(events);
+    }
   } catch (e) {
     toast('エラー: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = 'AIで作成';
   }
+}
+
+// ---------- AIが見つけた予定の選択 ----------
+
+let aiFoundEvents = []; // 選択画面に表示している、AIが読み取った予定
+
+function openAiPickModal(events) {
+  aiFoundEvents = events || [];
+  if (aiFoundEvents.length === 0) return toast('予定を見つけられませんでした');
+  renderAiPickList();
+  $('aiPickModal').classList.remove('hidden');
+}
+
+function renderAiPickList() {
+  const box = $('aiPickList');
+  box.textContent = '';
+  aiFoundEvents.forEach((ev, i) => {
+    const row = document.createElement('label');
+    row.className = 'ai-pick-item';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.dataset.index = String(i);
+    cb.onchange = updateAiPickCount;
+    row.appendChild(cb);
+
+    const body = document.createElement('div');
+    body.className = 'ai-pick-body';
+    // 読み取り結果にはよそのサイトの文字が入るため、HTMLとしてではなく文字として入れる
+    body.appendChild(aiPickLine('ai-pick-title', ev['タイトル'] || '(タイトルなし)'));
+    body.appendChild(aiPickLine('ai-pick-when', aiPickWhenText(ev)));
+
+    const names = (ev['メンバー'] || '').split(',').filter(String)
+      .map((id) => (memberById(id) || {})['名前']).filter(Boolean).join('・');
+    if (names) body.appendChild(aiPickLine('ai-pick-who', names));
+    if (ev['メモ']) body.appendChild(aiPickLine('ai-pick-memo', ev['メモ']));
+
+    row.appendChild(body);
+    box.appendChild(row);
+  });
+  updateAiPickCount();
+}
+
+function aiPickLine(cls, text) {
+  const el = document.createElement('div');
+  el.className = cls;
+  el.textContent = text;
+  return el;
+}
+
+function aiPickWhenText(ev) {
+  const end = ev['終了日'] || ev['開始日'];
+  const period = ev['開始日'] === end
+    ? fmtDateJP(ev['開始日'])
+    : `${fmtDateJP(ev['開始日'])}〜${fmtDateJP(end)}`;
+  const time = ev['終日'] === 'ON' || !ev['開始時刻']
+    ? '終日'
+    : `${ev['開始時刻']}${ev['終了時刻'] ? '〜' + ev['終了時刻'] : ''}`;
+  return `${period} ${time}`;
+}
+
+function aiPickCheckboxes() {
+  return [...$('aiPickList').querySelectorAll('input[type=checkbox]')];
+}
+
+function aiPickChecked() {
+  return aiPickCheckboxes().filter((c) => c.checked).map((c) => aiFoundEvents[Number(c.dataset.index)]);
+}
+
+function updateAiPickCount() {
+  const n = aiPickChecked().length;
+  $('aiPickCount').textContent = `${n} / ${aiFoundEvents.length}件を選択中`;
+  $('aiPickSave').disabled = n === 0;
+}
+
+function setAiPickAll(checked) {
+  aiPickCheckboxes().forEach((c) => { c.checked = checked; });
+  updateAiPickCount();
+}
+
+async function saveAiPicked() {
+  const picked = aiPickChecked();
+  if (picked.length === 0) return toast('登録する予定を選んでください');
+  const btn = $('aiPickSave');
+  // disabledにするとブラウザは以降のクリックを無視するため、多重タップでも二重送信されない
+  btn.disabled = true;
+  btn.textContent = '登録中…';
+  await busy(async () => {
+    // 二重登録を防ぐため、送る前に端末側でIDを発行する
+    const events = picked.map((ev) => ({
+      id: newId(),
+      'タイトル': ev['タイトル'],
+      '開始日': ev['開始日'],
+      '終了日': ev['終了日'] || ev['開始日'],
+      '終日': ev['終日'] === 'OFF' ? 'OFF' : 'ON',
+      '開始時刻': ev['終日'] === 'OFF' ? (ev['開始時刻'] || '') : '',
+      '終了時刻': ev['終日'] === 'OFF' ? (ev['終了時刻'] || '') : '',
+      'メンバー': ev['メンバー'] || '',
+      'メモ': ev['メモ'] || '',
+      'Gmail転記': 'OFF',
+    }));
+    const data = await api('saveEvents', { events });
+    applyData(data);
+    closeOverlay('aiPickModal');
+    renderGrid();
+    toast(`${data.saved}件の予定を登録しました`);
+  });
+  btn.disabled = false;
+  btn.textContent = '選んだ予定を登録';
 }
 
 // ---------- 共通UI ----------
@@ -968,6 +1086,9 @@ function bindEvents() {
   $('aiFab').onclick = openAiModal;
   $('aiRun').onclick = runAiParse;
   $('aiImage').onchange = (e) => e.target.files[0] && handleAiImage(e.target.files[0]);
+  $('aiPickAll').onclick = () => setAiPickAll(true);
+  $('aiPickNone').onclick = () => setAiPickAll(false);
+  $('aiPickSave').onclick = saveAiPicked;
   $('addEventFromDay').onclick = () => { closeOverlay('daySheet'); openEventEditor(null); };
   $('evAllDay').onchange = updateTimeRow;
   $('evMemo').oninput = renderMemoLinks;

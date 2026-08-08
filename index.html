@@ -60,13 +60,34 @@
     <label>やりたいことを文章で書いてください
       <textarea id="aiText" rows="3" placeholder="例：来週金曜の15時にしんらの歯医者&#10;例：7月20日から2泊で家族旅行"></textarea>
     </label>
+    <label>ホームページから読み取る（任意）
+      <input type="url" id="aiUrl" inputmode="url" autocomplete="off" placeholder="https://www.city.inzai.lg.jp/...">
+    </label>
     <label class="btn-secondary photo-btn ai-photo-btn">📷 写真から読み取る（チラシ・学校プリント等）
       <input type="file" id="aiImage" accept="image/*" hidden>
     </label>
     <div id="aiImgPreview" class="ai-img-preview hidden"></div>
-    <p class="hint-note">AIが日付・時間・対象の家族を読み取って入力します。結果は登録前に必ず確認画面に出ます。写真だけでもOKです。</p>
+    <p class="hint-note">AIが日付・時間・対象の家族を読み取って入力します。結果は登録前に必ず確認画面に出ます。文章・ホームページ・写真のどれか一つでOKです。予定が複数見つかったときは選んで登録できます。</p>
     <div class="modal-actions">
       <button id="aiRun" class="btn-primary">AIで作成</button>
+    </div>
+  </div>
+</div>
+
+<!-- AIが複数の予定を見つけたときの選択画面 -->
+<div id="aiPickModal" class="modal hidden">
+  <div class="modal-backdrop" data-close="aiPickModal"></div>
+  <div class="modal-body">
+    <h2>登録する予定を選ぶ</h2>
+    <p class="hint-note">AIが読み取った内容です。<strong>日付と時間が合っているか必ず確かめてください。</strong>登録したあとで一件ずつ直せます。</p>
+    <div class="ai-pick-toolbar">
+      <button id="aiPickAll" class="btn-secondary btn-small">すべて選ぶ</button>
+      <button id="aiPickNone" class="btn-secondary btn-small">すべて外す</button>
+      <span id="aiPickCount" class="ai-pick-count"></span>
+    </div>
+    <div id="aiPickList" class="ai-pick-list"></div>
+    <div class="modal-actions">
+      <button id="aiPickSave" class="btn-primary">選んだ予定を登録</button>
     </div>
   </div>
 </div>
