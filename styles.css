@@ -139,6 +139,42 @@ body {
   background-color: var(--bg); margin-bottom: 10px;
 }
 
+/* ---------- やること（要対応の予定） ---------- */
+
+/* ヘッダーのボタンが1つ増えたぶん、幅の狭い端末では詰めて折り返しを防ぐ */
+@media (max-width: 400px) {
+  .app-header { gap: 5px; padding-left: 10px; padding-right: 10px; }
+  .month-title { min-width: 92px; font-size: 17px; }
+  .today-btn { padding: 6px 9px; font-size: 13px; }
+  .nav-btn { width: 32px; height: 32px; font-size: 20px; }
+}
+
+.todo-btn { position: relative; }
+.todo-badge {
+  position: absolute; top: -4px; right: -4px; min-width: 17px; height: 17px;
+  padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff;
+  font-size: 11px; line-height: 17px; text-align: center; font-weight: 700;
+}
+
+.todo-list { max-height: 60vh; overflow-y: auto; }
+.todo-empty { font-size: 13px; color: var(--muted); line-height: 1.7; padding: 20px 4px; }
+
+.todo-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 4px; border-bottom: 1px solid var(--line); cursor: pointer;
+}
+.todo-item:last-child { border-bottom: none; }
+.todo-item input[type=checkbox] { width: 22px; height: 22px; margin-top: 2px; flex: none; }
+
+.todo-body { min-width: 0; }
+.todo-title { font-size: 15px; font-weight: 600; line-height: 1.4; word-break: break-word; }
+.todo-when { font-size: 13px; color: var(--accent); margin-top: 3px; }
+.todo-memo {
+  font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; word-break: break-word;
+}
+/* 日付が過ぎたものは色で分かるようにする */
+.todo-overdue .todo-when { color: var(--danger); font-weight: 600; }
+
 /* ---------- AIが見つけた予定の選択 ---------- */
 
 .ai-pick-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }

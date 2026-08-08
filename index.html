@@ -35,6 +35,9 @@
     <div class="month-title" id="monthTitle">2026年6月</div>
     <button id="nextMonth" class="nav-btn" aria-label="次の月">›</button>
     <button id="todayBtn" class="today-btn">今日</button>
+    <button id="todoBtn" class="icon-btn todo-btn" aria-label="やること">
+      ✓<span id="todoBadge" class="todo-badge hidden">0</span>
+    </button>
     <button id="settingsBtn" class="icon-btn" aria-label="設定">⚙</button>
   </header>
 
@@ -134,6 +137,10 @@
       <textarea id="evMemo" rows="2" placeholder="URLを書くとタップで開けるようになります"></textarea>
     </label>
     <div id="evMemoLinks" class="memo-links hidden"></div>
+    <label class="toggle-row">要対応（忘れてはいけない用事）
+      <input type="checkbox" id="evTodo">
+    </label>
+    <p class="hint-note">チェックを入れると、上の「やること」に出ます。済んだらそこで外してください。</p>
     <label class="toggle-row">Gmailへ転記（関係者へメール送信）
       <input type="checkbox" id="evGmail">
     </label>
@@ -141,6 +148,16 @@
       <button id="evDelete" class="btn-danger hidden">削除</button>
       <button id="evSave" class="btn-primary">保存</button>
     </div>
+  </div>
+</div>
+
+<!-- やること（要対応の予定） -->
+<div id="todoModal" class="modal hidden">
+  <div class="modal-backdrop" data-close="todoModal"></div>
+  <div class="modal-body">
+    <h2>やること</h2>
+    <p class="hint-note">「要対応」の印を付けた予定です。済んだらチェックを外すと、この一覧から消えます。</p>
+    <div id="todoList" class="todo-list"></div>
   </div>
 </div>
 

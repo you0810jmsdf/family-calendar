@@ -20,12 +20,17 @@ function pickFunction(name) {
 }
 
 const load = new Function(
+  'state',
   pickFunction('fmtDateJP') + '\n' +
   pickFunction('aiPickWhenText') + '\n' +
   pickFunction('splitUrlFromText') + '\n' +
-  'return { fmtDateJP, aiPickWhenText, splitUrlFromText };'
+  pickFunction('todoEvents') + '\n' +
+  'return { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents };'
 );
-const { fmtDateJP, aiPickWhenText, splitUrlFromText } = load();
+
+// todoEvents は state.events を見るため、テスト用の入れ物を渡す
+const state = { events: [] };
+const { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents } = load(state);
 
 test('fmtDateJP: 月日と曜日を出す', () => {
   assert.strictEqual(fmtDateJP('2026-09-01'), '9/1(火)');
@@ -105,4 +110,53 @@ test('splitUrlFromText: 全角スペースで区切られていてもURLを切�
 test('splitUrlFromText: 空でも落ちない', () => {
   assert.deepStrictEqual(splitUrlFromText('', ''), { text: '', url: '' });
   assert.deepStrictEqual(splitUrlFromText(null, ''), { text: null, url: '' });
+});
+
+// --- やること（要対応の予定） ---
+
+test('todoEvents: 印の付いた予定だけを拾う', () => {
+  state.events = [
+    { id: '1', 'タイトル': '申込', '開始日': '2026-09-01', '要対応': 'ON' },
+    { id: '2', 'タイトル': 'ただの予定', '開始日': '2026-09-02', '要対応': 'OFF' },
+    { id: '3', 'タイトル': '印なし', '開始日': '2026-09-03' },
+  ];
+  const out = todoEvents();
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].id, '1');
+});
+
+test('todoEvents: 期限が近い順に並べる', () => {
+  // 締切が迫っているものほど上に来ないと、一覧の意味がない
+  state.events = [
+    { id: 'c', '開始日': '2026-12-01', '要対応': 'ON' },
+    { id: 'a', '開始日': '2026-08-21', '要対応': 'ON' },
+    { id: 'b', '開始日': '2026-09-08', '要対応': 'ON' },
+  ];
+  assert.deepStrictEqual(todoEvents().map((e) => e.id), ['a', 'b', 'c']);
+});
+
+test('todoEvents: 期限が過ぎたものは先頭に来る', () => {
+  // 取りこぼしに気づけるよう、過ぎたものを隠さず一番上に置く
+  state.events = [
+    { id: 'future', '開始日': '2026-12-01', '要対応': 'ON' },
+    { id: 'overdue', '開始日': '2026-07-01', '要対応': 'ON' },
+  ];
+  assert.strictEqual(todoEvents()[0].id, 'overdue');
+});
+
+test('todoEvents: 印が1つも無ければ空', () => {
+  state.events = [{ id: '1', '開始日': '2026-09-01', '要対応': 'OFF' }];
+  assert.deepStrictEqual(todoEvents(), []);
+  state.events = [];
+  assert.deepStrictEqual(todoEvents(), []);
+});
+
+test('todoEvents: 元の配列を並べ替えない', () => {
+  // state.events の順番が変わると、カレンダーの表示に影響する
+  state.events = [
+    { id: 'c', '開始日': '2026-12-01', '要対応': 'ON' },
+    { id: 'a', '開始日': '2026-08-21', '要対応': 'ON' },
+  ];
+  todoEvents();
+  assert.deepStrictEqual(state.events.map((e) => e.id), ['c', 'a']);
 });

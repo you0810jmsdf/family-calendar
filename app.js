@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v19';
+const APP_VERSION = 'v20';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -182,6 +182,8 @@ function toggleMember(id) {
 }
 
 function renderGrid() {
+  // 予定が変わるたびに必ずここを通るので、やることの件数もあわせて出し直す
+  renderTodoBadge();
   const grid = $('monthGrid');
   grid.innerHTML = '';
   const first = new Date(state.year, state.month, 1);
@@ -378,6 +380,7 @@ function openEventEditor(ev) {
   $('evMemo').value = ev ? ev['メモ'] : '';
   renderMemoLinks();
   $('evGmail').checked = ev ? ev['Gmail転記'] === 'ON' : false;
+  $('evTodo').checked = ev ? ev['要対応'] === 'ON' : false;
   $('evDelete').classList.toggle('hidden', isNew);
   $('evSave').disabled = false;
   $('evSave').textContent = '保存';
@@ -503,6 +506,7 @@ async function saveEvent() {
     'メンバー': [...state.evSelectedMembers].join(','),
     'メモ': $('evMemo').value.trim(),
     'Gmail転記': $('evGmail').checked ? 'ON' : 'OFF',
+    '要対応': $('evTodo').checked ? 'ON' : 'OFF',
   };
   // Googleカレンダー取込予定の編集時はタグを引き継ぐ（次回同期で洗い替え対象に保つ）
   const orig = state.events.find((x) => x.id === state.editingEventId);
@@ -822,6 +826,74 @@ async function runAiParse() {
   }
 }
 
+// ---------- やること（要対応の予定） ----------
+
+// 期限が近い順。日付が過ぎたものを先頭に置き、取りこぼしに気づけるようにする
+function todoEvents() {
+  return state.events
+    .filter((ev) => ev['要対応'] === 'ON')
+    .sort((a, b) => String(a['開始日']).localeCompare(String(b['開始日'])));
+}
+
+function renderTodoBadge() {
+  const n = todoEvents().length;
+  const badge = $('todoBadge');
+  badge.textContent = String(n);
+  badge.classList.toggle('hidden', n === 0);
+}
+
+function openTodoModal() {
+  renderTodoList();
+  $('todoModal').classList.remove('hidden');
+}
+
+function renderTodoList() {
+  const box = $('todoList');
+  box.textContent = '';
+  const list = todoEvents();
+  if (list.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'todo-empty';
+    empty.textContent = 'やることはありません。予定の編集画面で「要対応」にチェックを入れると、ここに出ます。';
+    box.appendChild(empty);
+    return;
+  }
+  const today = todayStr();
+  list.forEach((ev) => {
+    const row = document.createElement('label');
+    row.className = 'todo-item';
+    if (ev['開始日'] < today) row.classList.add('todo-overdue');
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.onchange = () => clearTodo(ev.id);
+    row.appendChild(cb);
+
+    const body = document.createElement('div');
+    body.className = 'todo-body';
+    // 取込予定のタイトルにはよそのサイトの文字が入ることがあるため、文字として入れる
+    body.appendChild(aiPickLine('todo-title', ev['タイトル'] || '(タイトルなし)'));
+    const when = aiPickLine('todo-when', aiPickWhenText(ev) + (ev['開始日'] < today ? '  期限切れ' : ''));
+    body.appendChild(when);
+    if (ev['メモ']) body.appendChild(aiPickLine('todo-memo', ev['メモ']));
+    row.appendChild(body);
+
+    box.appendChild(row);
+  });
+}
+
+async function clearTodo(id) {
+  await busy(async () => {
+    const data = await api('setTodo', { id, value: 'OFF' });
+    applyData(data);
+    renderTodoList();
+    renderTodoBadge();
+    renderGrid();
+    toast('やることから外しました');
+  });
+}
+
 // ---------- AIが見つけた予定の選択 ----------
 
 let aiFoundEvents = []; // 選択画面に表示している、AIが読み取った予定
@@ -1096,6 +1168,7 @@ function bindEvents() {
   $('aiFab').onclick = openAiModal;
   $('aiRun').onclick = runAiParse;
   $('aiImage').onchange = (e) => e.target.files[0] && handleAiImage(e.target.files[0]);
+  $('todoBtn').onclick = openTodoModal;
   $('aiPickAll').onclick = () => setAiPickAll(true);
   $('aiPickNone').onclick = () => setAiPickAll(false);
   $('aiPickSave').onclick = saveAiPicked;
