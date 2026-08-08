@@ -22,9 +22,10 @@ function pickFunction(name) {
 const load = new Function(
   pickFunction('fmtDateJP') + '\n' +
   pickFunction('aiPickWhenText') + '\n' +
-  'return { fmtDateJP, aiPickWhenText };'
+  pickFunction('splitUrlFromText') + '\n' +
+  'return { fmtDateJP, aiPickWhenText, splitUrlFromText };'
 );
-const { fmtDateJP, aiPickWhenText } = load();
+const { fmtDateJP, aiPickWhenText, splitUrlFromText } = load();
 
 test('fmtDateJP: 月日と曜日を出す', () => {
   assert.strictEqual(fmtDateJP('2026-09-01'), '9/1(火)');
@@ -64,4 +65,44 @@ test('aiPickWhenText: 終日OFFなのに時刻が無ければ「終日」と出�
 test('aiPickWhenText: 終了日が無ければ開始日と同じ扱いにする', () => {
   const ev = { '開始日': '2026-09-01', '終日': 'ON' };
   assert.strictEqual(aiPickWhenText(ev), '9/1(火) 終日');
+});
+
+// --- 文章欄にURLを貼られたときの拾い上げ ---
+
+const PAGE = 'https://www.city.inzai.lg.jp/0000022254.html';
+
+test('splitUrlFromText: 文章欄にURLだけ貼られたら、URLとして扱う', () => {
+  // URLを文章として渡すと、AIがURLをタイトルにして今日の日付を当ててしまう
+  const r = splitUrlFromText(PAGE, '');
+  assert.strictEqual(r.url, PAGE);
+  assert.strictEqual(r.text, '');
+});
+
+test('splitUrlFromText: 文章とURLが混ざっていれば、両方を活かす', () => {
+  const r = splitUrlFromText(`このお知らせを登録して ${PAGE}`, '');
+  assert.strictEqual(r.url, PAGE);
+  assert.strictEqual(r.text, 'このお知らせを登録して');
+});
+
+test('splitUrlFromText: URL欄が埋まっていれば文章には手を触れない', () => {
+  const r = splitUrlFromText(`${PAGE} を見て`, 'https://example.com/a');
+  assert.strictEqual(r.url, 'https://example.com/a');
+  assert.strictEqual(r.text, `${PAGE} を見て`);
+});
+
+test('splitUrlFromText: URLが無ければそのまま返す', () => {
+  const r = splitUrlFromText('来週金曜の10時から歯医者', '');
+  assert.strictEqual(r.url, '');
+  assert.strictEqual(r.text, '来週金曜の10時から歯医者');
+});
+
+test('splitUrlFromText: 全角スペースで区切られていてもURLを切り出す', () => {
+  const r = splitUrlFromText(`${PAGE}　これを登録`, '');
+  assert.strictEqual(r.url, PAGE);
+  assert.strictEqual(r.text, 'これを登録');
+});
+
+test('splitUrlFromText: 空でも落ちない', () => {
+  assert.deepStrictEqual(splitUrlFromText('', ''), { text: '', url: '' });
+  assert.deepStrictEqual(splitUrlFromText(null, ''), { text: null, url: '' });
 });

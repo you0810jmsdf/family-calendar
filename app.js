@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v18';
+const APP_VERSION = 'v19';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -777,9 +777,19 @@ function handleAiImage(file) {
   reader.readAsDataURL(file);
 }
 
+// 文章欄にURLだけ貼られることが多い。URL欄が空ならそちらから拾って
+// ページ取得に回す（拾ったURLは文章から外す。URLが予定名になってしまうため）
+function splitUrlFromText(text, url) {
+  if (url) return { text: text, url: url };
+  const m = String(text || '').match(/https?:\/\/[^\s　]+/);
+  if (!m) return { text: text, url: '' };
+  return { text: String(text).replace(m[0], '').trim(), url: m[0] };
+}
+
 async function runAiParse() {
-  const text = $('aiText').value.trim();
-  const url = $('aiUrl').value.trim();
+  const input = splitUrlFromText($('aiText').value.trim(), $('aiUrl').value.trim());
+  const text = input.text;
+  const url = input.url;
   if (!text && !url && !aiImage) return toast('文章・ホームページ・写真のどれかを入れてください');
   if (url && !/^https?:\/\//i.test(url)) return toast('ホームページのURLは http:// か https:// から入れてください');
   const btn = $('aiRun');
