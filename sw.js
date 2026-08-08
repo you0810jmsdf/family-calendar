@@ -1,5 +1,5 @@
 /* 家族カレンダー Service Worker（アプリシェルのキャッシュ） */
-const CACHE = 'famcal-v18';
+const CACHE = 'famcal-v19';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -21,8 +21,22 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   // APIは常にネットワーク（GAS側はキャッシュしない）
   if (url.origin !== self.location.origin) return;
+
+  // ネットワーク優先にしても、ブラウザ自身のHTTPキャッシュに古い本体が残っていると
+  // 古いapp.jsが返る（GitHub Pagesは10分間ブラウザに保持させるため）。
+  // index.htmlだけ新しく、app.jsが古い、というちぐはぐな状態が実際に起きた。
+  // アプリ本体にあたるファイルだけは、HTTPキャッシュを飛ばして取り直す。
+  let req = e.request;
+  if (/(\/|\.html|\.js|\.css)$/.test(url.pathname)) {
+    try {
+      req = new Request(e.request.url, { cache: 'reload', credentials: 'same-origin' });
+    } catch (err) {
+      // 作れない環境では元のリクエストのまま使う（従来どおりの動き）
+    }
+  }
+
   e.respondWith(
-    fetch(e.request)
+    fetch(req)
       .then((res) => {
         if (res && res.ok) {
           const copy = res.clone();

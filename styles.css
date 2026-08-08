@@ -194,6 +194,7 @@ body {
 .modal-body label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 12px; }
 .modal-body input[type="text"], .modal-body input[type="email"],
 .modal-body input[type="date"], .modal-body input[type="time"],
+.modal-body input[type="url"], .modal-body input[type="tel"],
 .modal-body textarea, .modal-body select {
   display: block; width: 100%; padding: 11px; font-size: 16px; margin-top: 4px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text);
