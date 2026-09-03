@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v20';
+const APP_VERSION = 'v21';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';

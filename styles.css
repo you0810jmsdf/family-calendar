@@ -234,8 +234,10 @@ body {
 .modal-body textarea, .modal-body select {
   display: block; width: 100%; padding: 11px; font-size: 16px; margin-top: 4px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text);
+  line-height: 1.5;
   -webkit-appearance: none; appearance: none;
 }
+.modal-body textarea { resize: vertical; }
 .modal-body input[type="color"] { margin-top: 4px; width: 64px; height: 40px; border: 1px solid var(--line); border-radius: 8px; background: none; }
 .row2 { display: flex; gap: 10px; } .row2 label { flex: 1; }
 .toggle-row {
