@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v21';
+const APP_VERSION = 'v22';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -48,9 +48,17 @@ function applyData(data) {
   if (data.members) state.members = data.members;
   if (data.events) state.events = data.events;
   if (data.settings) state.settings = data.settings;
-  localStorage.setItem(LS_CACHE, JSON.stringify({
-    members: state.members, events: state.events, settings: state.settings,
-  }));
+  // 端末の控えは読み込み失敗時の予備にすぎない。このサイト（github.io）は他のツールと
+  // 保存領域を共有しているため、容量いっぱいで書き込めないことがある。
+  // ここで例外を出すと、サーバーには保存できたのに「エラー」と表示されてしまう
+  try {
+    localStorage.setItem(LS_CACHE, JSON.stringify({
+      members: state.members, events: state.events, settings: state.settings,
+    }));
+  } catch (e) {
+    // 古い控えが残ると、次にオフラインになったとき古い予定を見せてしまうため消しておく
+    try { localStorage.removeItem(LS_CACHE); } catch (e2) { /* 消せなくても続行 */ }
+  }
 }
 
 async function loadAll() {
@@ -526,7 +534,15 @@ async function saveEvent() {
       toast('Googleカレンダーを更新して取り込み直しました');
       return;
     }
-    const data = await api('saveEvent', { event: ev });
+    let data;
+    try {
+      data = await api('saveEvent', { event: ev });
+    } catch (e) {
+      // 通信の途中で切れると、サーバー側は保存済みでも応答だけ受け取れないことがある。
+      // IDは端末側で決めているので、読み直してその予定が届いているかを確かめる
+      if (!(await confirmEventSaved(ev))) throw e;
+      data = {};
+    }
     applyData(data);
     closeOverlay('eventModal');
     renderGrid();
@@ -534,6 +550,24 @@ async function saveEvent() {
   });
   saveBtn.disabled = false;
   saveBtn.textContent = '保存';
+}
+
+// 保存時に通信エラーになった予定が、実際にはサーバーへ届いているかを確かめる
+async function confirmEventSaved(ev) {
+  try {
+    applyData(await api('listAll'));
+  } catch (e) {
+    return false;
+  }
+  return state.events.some((x) => isSameSavedEvent(x, ev));
+}
+
+// サーバーに届いた行が、送った内容と一致するか。
+// 時刻はスプレッドシート側で「8:30」のように先頭の0が落ちることがあるため比べない
+function isSameSavedEvent(saved, sent) {
+  if (!saved || !sent || saved.id !== sent.id) return false;
+  return ['タイトル', '開始日', '終了日', 'メンバー', 'メモ']
+    .every((k) => String(saved[k] || '') === String(sent[k] || ''));
 }
 
 async function deleteEvent() {
