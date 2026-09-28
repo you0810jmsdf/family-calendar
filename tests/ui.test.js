@@ -160,3 +160,36 @@ test('todoEvents: 元の配列を並べ替えない', () => {
   todoEvents();
   assert.deepStrictEqual(state.events.map((e) => e.id), ['c', 'a']);
 });
+
+// ---------- 保存まわり ----------
+// サーバーには保存できたのに、端末側の都合で「エラー」と表示されていた不具合の再発防止
+
+test('isSameSavedEvent: 送った内容と同じ行なら保存済みとみなす', () => {
+  const { isSameSavedEvent } = new Function(pickFunction('isSameSavedEvent') + '\nreturn { isSameSavedEvent };')();
+  const sent = {
+    id: 'ca02', 'タイトル': 'CBIポスター作り', '開始日': '2026-10-04', '終了日': '2026-10-04',
+    '開始時刻': '08:30', 'メンバー': 'b5b9', 'メモ': 'パレットII',
+  };
+  // スプレッドシートから返る時刻は先頭の0が落ちることがある
+  const saved = { ...sent, '開始時刻': '8:30', '更新日時': '2026-09-28 22:58:44' };
+  assert.strictEqual(isSameSavedEvent(saved, sent), true);
+  assert.strictEqual(isSameSavedEvent({ ...saved, id: 'other' }, sent), false);
+  // 編集前の行が残っているだけ（メモが古い）なら保存できていない
+  assert.strictEqual(isSameSavedEvent({ ...saved, 'メモ': '' }, sent), false);
+  assert.strictEqual(isSameSavedEvent(undefined, sent), false);
+});
+
+test('applyData: 端末の保存領域がいっぱいでも例外を出さず、データは反映する', () => {
+  const removed = [];
+  const fullStorage = {
+    setItem() { throw new Error('QuotaExceededError'); },
+    removeItem(k) { removed.push(k); },
+  };
+  const st = { members: [], events: [], settings: {} };
+  const { applyData } = new Function('state', 'localStorage', 'LS_CACHE',
+    pickFunction('applyData') + '\nreturn { applyData };')(st, fullStorage, 'famcal_cache');
+  assert.doesNotThrow(() => applyData({ events: [{ id: 'a' }] }));
+  assert.deepStrictEqual(st.events, [{ id: 'a' }]);
+  // 古い控えは消しておく
+  assert.deepStrictEqual(removed, ['famcal_cache']);
+});
