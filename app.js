@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v23';
+const APP_VERSION = 'v24';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -1230,12 +1230,17 @@ async function start() {
 }
 
 async function connect() {
-  const key = $('familyKeyInput').value.trim();
+  let key = $('familyKeyInput').value.trim();
   if (!key) return;
   $('setupError').textContent = '';
   $('connectBtn').disabled = true;
   $('connectBtn').textContent = '接続中…';
   try {
+    if (/^[0-9]{6,12}$/.test(key)) {
+      // 数字だけなら暗証コード。GASが正しければ家族コードを返すので、以降はそれを端末に保存する
+      state.key = '';
+      key = (await api('unlockWithPin', { pin: key })).key;
+    }
     state.key = key;
     await api('listAll').then(applyData);
     saveKey(key);
@@ -1286,6 +1291,12 @@ function bindEvents() {
   $('sSave').onclick = saveSettings;
   $('sReload').onclick = () => busy(async () => { await loadAll(); renderAll(); toast('再読み込みしました'); });
   $('sHardReload').onclick = hardReload;
+  $('sSetPin').onclick = () => busy(async () => {
+    const pin = (window.prompt('暗証コードを数字6〜12桁で入力してください（新しい端末ではこれだけで入れます）') || '').trim();
+    if (!pin) return;
+    await api('setPin', { pin });
+    toast('暗証コードを設定しました');
+  });
   $('sVersion').textContent = '家族カレンダー ' + APP_VERSION + '（PWA版）';
   $('sSyncGcal').onclick = () => busy(async () => {
     const data = await api('syncNow');
