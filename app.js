@@ -61,9 +61,18 @@ function applyData(data) {
   }
 }
 
+const isAuthError = (e) => String(e.message).indexOf('認証エラー') >= 0;
+
 async function loadAll() {
   try {
-    applyData(await api('listAll'));
+    try {
+      applyData(await api('listAll'));
+    } catch (e) {
+      // GASの転送でコードが落ちる一時的な認証エラーがあるため、1回だけ送り直す
+      if (!isAuthError(e)) throw e;
+      await new Promise((r) => setTimeout(r, 800));
+      applyData(await api('listAll'));
+    }
     state.offline = false;
   } catch (e) {
     // 家族コード変更（認証エラー）時はキャッシュに逃がさず再入力へ誘導
@@ -1151,13 +1160,13 @@ async function start() {
     await loadAll();
     renderAll();
   } catch (e) {
-    if (String(e.message).indexOf('認証エラー') >= 0) {
-      // コードが変わった端末は入力画面へ戻す
-      localStorage.removeItem(LS_KEY);
+    if (isAuthError(e)) {
+      // 再試行しても認証エラーなら入力画面へ戻す（保存コードは消さず入力欄に残す）
+      $('familyKeyInput').value = state.key;
       state.key = '';
       $('mainScreen').classList.add('hidden');
       $('setupScreen').classList.remove('hidden');
-      $('setupError').textContent = '家族コードが新しくなりました。新しいコードを入力してください';
+      $('setupError').textContent = '認証できませんでした。コードが新しくなった場合は入力し直してください（そのまま「はじめる」で再試行できます）';
       return;
     }
     toast('読み込みエラー: ' + e.message);
