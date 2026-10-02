@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v22';
+const APP_VERSION = 'v23';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -10,7 +10,7 @@ const LS_CACHE = 'famcal_cache';
 const LS_HIDDEN = 'famcal_hidden';
 
 const state = {
-  key: localStorage.getItem(LS_KEY) || '',
+  key: readKeyFast(),
   members: [],
   events: [],
   settings: {},
@@ -29,6 +29,55 @@ const state = {
 const HOLIDAY_MEMBER = '__holiday__';
 
 const $ = (id) => document.getElementById(id);
+
+// ---------- 家族コードの保存（iOSのホーム画面アプリで消えても戻せるよう3か所に持つ） ----------
+
+function readKeyFast() {
+  try {
+    const v = localStorage.getItem(LS_KEY);
+    if (v) return v;
+  } catch (e) { /* 保存領域が使えない端末 */ }
+  try {
+    const m = document.cookie.match(/(?:^|;\s*)famcal_key=([^;]*)/);
+    if (m) return decodeURIComponent(m[1]);
+  } catch (e) { /* 同上 */ }
+  return '';
+}
+
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const r = indexedDB.open('famcal', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+
+async function readKeyIdb() {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve) => {
+      const q = db.transaction('kv').objectStore('kv').get(LS_KEY);
+      q.onsuccess = () => resolve(q.result || '');
+      q.onerror = () => resolve('');
+    });
+  } catch (e) {
+    return '';
+  }
+}
+
+async function saveKey(key) {
+  try { localStorage.setItem(LS_KEY, key); } catch (e) { /* 他の保存先に任せる */ }
+  try {
+    document.cookie = 'famcal_key=' + encodeURIComponent(key) +
+      '; max-age=34560000; path=/; SameSite=Lax; Secure';
+  } catch (e) { /* 同上 */ }
+  try {
+    const db = await idbOpen();
+    db.transaction('kv', 'readwrite').objectStore('kv').put(key, LS_KEY);
+  } catch (e) { /* 同上 */ }
+}
+
 
 // ---------- API ----------
 
@@ -1147,7 +1196,14 @@ async function start() {
   const urlCode = new URLSearchParams(location.search).get('code');
   if (urlCode && !state.key) {
     state.key = urlCode;
-    localStorage.setItem(LS_KEY, urlCode);
+    saveKey(urlCode);
+  }
+
+  // iOSが保存を消さないよう永続化を要求し、localStorageが空ならIndexedDBから復元する
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* 非対応 */ }
+  if (!state.key) {
+    state.key = await readKeyIdb();
+    if (state.key) saveKey(state.key); // 他の保存先にも書き戻す
   }
 
   if (!state.key) {
@@ -1182,7 +1238,7 @@ async function connect() {
   try {
     state.key = key;
     await api('listAll').then(applyData);
-    localStorage.setItem(LS_KEY, key);
+    saveKey(key);
     $('setupScreen').classList.add('hidden');
     $('mainScreen').classList.remove('hidden');
     renderAll();
