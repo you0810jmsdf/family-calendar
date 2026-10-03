@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v24';
+const APP_VERSION = 'v25';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -114,13 +114,15 @@ const isAuthError = (e) => String(e.message).indexOf('認証エラー') >= 0;
 
 async function loadAll() {
   try {
-    try {
-      applyData(await api('listAll'));
-    } catch (e) {
-      // GASの転送でコードが落ちる一時的な認証エラーがあるため、1回だけ送り直す
-      if (!isAuthError(e)) throw e;
-      await new Promise((r) => setTimeout(r, 800));
-      applyData(await api('listAll'));
+    // GASの転送でコードが落ちる一時的な認証エラーがあるため、最大2回まで送り直す
+    for (let retry = 0; ; retry++) {
+      try {
+        applyData(await api('listAll'));
+        break;
+      } catch (e) {
+        if (!isAuthError(e) || retry >= 2) throw e;
+        await new Promise((r) => setTimeout(r, 800 + retry * 700));
+      }
     }
     state.offline = false;
   } catch (e) {
