@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v26';
+const APP_VERSION = 'v27';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -474,6 +474,25 @@ function expandRepeat(ev, kind, count) {
     }));
   }
   return out;
+}
+
+const REPEAT_LABELS = { daily: '毎日', weekly: '毎週', biweekly: '隔週', monthly: '毎月' };
+
+// AIが返した「繰り返し」を {kind, count} にする。使えない値は null（繰り返しなし）
+function aiRepeatOf(ev) {
+  const r = ev && ev['繰り返し'];
+  if (!r || !REPEAT_LABELS[r['種類']]) return null;
+  const count = Math.floor(Number(r['回数']));
+  if (!(count >= 2)) return null;
+  return { kind: r['種類'], count: Math.min(count, REPEAT_MAX) };
+}
+
+// 選択画面に出す「毎週・全8回（11/10(火)〜12/29(火)）」の表記
+function aiRepeatText(ev) {
+  const rep = aiRepeatOf(ev);
+  if (!rep) return '';
+  const list = expandRepeat({ id: '', '開始日': ev['開始日'], '終了日': ev['終了日'] || ev['開始日'] }, rep.kind, rep.count);
+  return `${REPEAT_LABELS[rep.kind]}・全${list.length}回（${fmtDateJP(list[0]['開始日'])}〜${fmtDateJP(list[list.length - 1]['開始日'])}）`;
 }
 
 function openEventEditor(ev) {
@@ -987,6 +1006,13 @@ async function runAiParse() {
       // 担当者を読み取れなかった場合は、家族を選ぶまで保存できないようにする
       state.aiNeedMember = state.evSelectedMembers.size === 0;
       renderEvMemberSelect();
+      // 文章から繰り返しを読み取れていたら、繰り返し欄に入れておく（確認・変更できる）
+      const rep = aiRepeatOf(ev);
+      if (rep) {
+        $('evRepeat').value = rep.kind;
+        $('evRepeatCount').value = String(rep.count);
+        updateRepeatRow();
+      }
     } else {
       openAiPickModal(events);
     }
@@ -1096,6 +1122,8 @@ function renderAiPickList() {
     // 読み取り結果にはよそのサイトの文字が入るため、HTMLとしてではなく文字として入れる
     body.appendChild(aiPickLine('ai-pick-title', ev['タイトル'] || '(タイトルなし)'));
     body.appendChild(aiPickLine('ai-pick-when', aiPickWhenText(ev)));
+    const repText = aiRepeatText(ev);
+    if (repText) body.appendChild(aiPickLine('ai-pick-repeat', '🔁 ' + repText));
 
     // 担当者は読み取れた場合も含め、1件ずつ家族アイコンで付け外しできる
     const who = document.createElement('div');
@@ -1186,23 +1214,33 @@ async function saveAiPicked() {
   btn.textContent = '登録中…';
   await busy(async () => {
     // 二重登録を防ぐため、送る前に端末側でIDを発行する
-    const events = picked.map((ev) => ({
-      id: newId(),
-      'タイトル': ev['タイトル'],
-      '開始日': ev['開始日'],
-      '終了日': ev['終了日'] || ev['開始日'],
-      '終日': ev['終日'] === 'OFF' ? 'OFF' : 'ON',
-      '開始時刻': ev['終日'] === 'OFF' ? (ev['開始時刻'] || '') : '',
-      '終了時刻': ev['終日'] === 'OFF' ? (ev['終了時刻'] || '') : '',
-      'メンバー': ev['メンバー'] || '',
-      'メモ': ev['メモ'] || '',
-      'Gmail転記': 'OFF',
-    }));
-    const data = await api('saveEvents', { events });
+    const events = picked.flatMap((ev) => {
+      const base = {
+        id: newId(),
+        'タイトル': ev['タイトル'],
+        '開始日': ev['開始日'],
+        '終了日': ev['終了日'] || ev['開始日'],
+        '終日': ev['終日'] === 'OFF' ? 'OFF' : 'ON',
+        '開始時刻': ev['終日'] === 'OFF' ? (ev['開始時刻'] || '') : '',
+        '終了時刻': ev['終日'] === 'OFF' ? (ev['終了時刻'] || '') : '',
+        'メンバー': ev['メンバー'] || '',
+        'メモ': ev['メモ'] || '',
+        'Gmail転記': 'OFF',
+      };
+      const rep = aiRepeatOf(ev);
+      return rep ? expandRepeat(base, rep.kind, rep.count) : [base];
+    });
+    // GASは1回20件までしか受け付けないため、超える分は小分けにして送る（黙って切り捨てられるのを防ぐ）
+    let data = null;
+    let saved = 0;
+    for (let i = 0; i < events.length; i += REPEAT_MAX) {
+      data = await api('saveEvents', { events: events.slice(i, i + REPEAT_MAX) });
+      saved += data.saved || 0;
+    }
     applyData(data);
     closeOverlay('aiPickModal');
     renderGrid();
-    toast(`${data.saved}件の予定を登録しました`);
+    toast(`${saved}件の予定を登録しました`);
   });
   btn.disabled = false;
   btn.textContent = '選んだ予定を登録';

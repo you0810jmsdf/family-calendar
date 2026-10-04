@@ -257,6 +257,7 @@ body {
 .ai-pick-who-label { font-size: 12px; font-weight: 700; color: #e0533d; margin-bottom: 6px; }
 .ai-pick-members .member-select { margin-bottom: 0; gap: 6px; }
 .ai-pick-members .member-select .member-chip .avatar { width: 34px; height: 34px; font-size: 14px; }
+.ai-pick-repeat { font-size: 12px; font-weight: 700; color: var(--accent, #4a7bd8); margin: 2px 0 4px; }
 .repeat-row { display: flex; gap: 10px; }
 .repeat-row label { flex: 1; }
 

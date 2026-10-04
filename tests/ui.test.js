@@ -31,12 +31,15 @@ const load = new Function(
   pickFunction('addMonthsStr') + '\n' +
   pickFunction('daysBetweenStr') + '\n' +
   pickFunction('expandRepeat') + '\n' +
-  'return { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents, expandRepeat };'
+  "const REPEAT_LABELS = { daily: '毎日', weekly: '毎週', biweekly: '隔週', monthly: '毎月' };\n" +
+  pickFunction('aiRepeatOf') + '\n' +
+  pickFunction('aiRepeatText') + '\n' +
+  'return { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents, expandRepeat, aiRepeatOf, aiRepeatText };'
 );
 
 // todoEvents は state.events を見るため、テスト用の入れ物を渡す
 const state = { events: [] };
-const { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents, expandRepeat } = load(state, globalThis);
+const { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents, expandRepeat, aiRepeatOf, aiRepeatText } = load(state, globalThis);
 
 test('expandRepeat: 毎週×4回は7日ずつ、1件目だけ元のID', () => {
   const ev = { id: 'orig', '開始日': '2026-11-03', '終了日': '2026-11-03', 'タイトル': 'x' };
@@ -226,4 +229,20 @@ test('applyData: 端末の保存領域がいっぱいでも例外を出さず、
   assert.deepStrictEqual(st.events, [{ id: 'a' }]);
   // 古い控えは消しておく
   assert.deepStrictEqual(removed, ['famcal_cache']);
+});
+
+test('aiRepeatOf: 使える繰り返しだけ通し、不正な値・1回・null は捨てる', () => {
+  assert.deepStrictEqual(aiRepeatOf({ '繰り返し': { '種類': 'weekly', '回数': 8 } }), { kind: 'weekly', count: 8 });
+  assert.deepStrictEqual(aiRepeatOf({ '繰り返し': { '種類': 'daily', '回数': '5' } }), { kind: 'daily', count: 5 });
+  assert.strictEqual(aiRepeatOf({ '繰り返し': { '種類': 'weekly', '回数': 1 } }), null);
+  assert.strictEqual(aiRepeatOf({ '繰り返し': { '種類': 'yearly', '回数': 4 } }), null);
+  assert.strictEqual(aiRepeatOf({ '繰り返し': null }), null);
+  assert.strictEqual(aiRepeatOf({}), null);
+  assert.strictEqual(aiRepeatOf({ '繰り返し': { '種類': 'weekly', '回数': 99 } }).count, 20);
+});
+
+test('aiRepeatText: 種類・回数・最初と最後の日を出す', () => {
+  const ev = { '開始日': '2026-11-10', '終了日': '2026-11-10', '繰り返し': { '種類': 'weekly', '回数': 8 } };
+  assert.strictEqual(aiRepeatText(ev), '毎週・全8回（11/10(火)〜12/29(火)）');
+  assert.strictEqual(aiRepeatText({ '開始日': '2026-11-10' }), '');
 });
