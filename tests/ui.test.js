@@ -20,17 +20,51 @@ function pickFunction(name) {
 }
 
 const load = new Function(
-  'state',
+  'state', 'window',
   pickFunction('fmtDateJP') + '\n' +
   pickFunction('aiPickWhenText') + '\n' +
   pickFunction('splitUrlFromText') + '\n' +
   pickFunction('todoEvents') + '\n' +
-  'return { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents };'
+  'const REPEAT_MAX = 20;\n' +
+  pickFunction('newId') + '\n' +
+  pickFunction('addDaysStr') + '\n' +
+  pickFunction('addMonthsStr') + '\n' +
+  pickFunction('daysBetweenStr') + '\n' +
+  pickFunction('expandRepeat') + '\n' +
+  'return { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents, expandRepeat };'
 );
 
 // todoEvents は state.events を見るため、テスト用の入れ物を渡す
 const state = { events: [] };
-const { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents } = load(state);
+const { fmtDateJP, aiPickWhenText, splitUrlFromText, todoEvents, expandRepeat } = load(state, globalThis);
+
+test('expandRepeat: 毎週×4回は7日ずつ、1件目だけ元のID', () => {
+  const ev = { id: 'orig', '開始日': '2026-11-03', '終了日': '2026-11-03', 'タイトル': 'x' };
+  const list = expandRepeat(ev, 'weekly', 4);
+  assert.deepStrictEqual(list.map((e) => e['開始日']), ['2026-11-03', '2026-11-10', '2026-11-17', '2026-11-24']);
+  assert.strictEqual(list[0].id, 'orig');
+  assert.strictEqual(new Set(list.map((e) => e.id)).size, 4);
+});
+
+test('expandRepeat: 期間のある予定は日数を保ち、月またぎ・年またぎもずれない', () => {
+  const ev = { id: 'a', '開始日': '2026-12-30', '終了日': '2027-01-01' };
+  const list = expandRepeat(ev, 'biweekly', 2);
+  assert.strictEqual(list[1]['開始日'], '2027-01-13');
+  assert.strictEqual(list[1]['終了日'], '2027-01-15');
+});
+
+test('expandRepeat: 毎月31日は短い月で月末に寄せ、次の月で31日に戻る', () => {
+  const ev = { id: 'a', '開始日': '2026-01-31', '終了日': '2026-01-31' };
+  const days = expandRepeat(ev, 'monthly', 4).map((e) => e['開始日']);
+  assert.deepStrictEqual(days, ['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30']);
+});
+
+test('expandRepeat: しない・1回・上限超えの扱い', () => {
+  const ev = { id: 'a', '開始日': '2026-11-03', '終了日': '2026-11-03' };
+  assert.strictEqual(expandRepeat(ev, 'none', 5).length, 1);
+  assert.strictEqual(expandRepeat(ev, 'daily', 1).length, 1);
+  assert.strictEqual(expandRepeat(ev, 'daily', 99).length, 20);
+});
 
 test('fmtDateJP: 月日と曜日を出す', () => {
   assert.strictEqual(fmtDateJP('2026-09-01'), '9/1(火)');

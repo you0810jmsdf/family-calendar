@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v25';
+const APP_VERSION = 'v26';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -432,6 +432,50 @@ function newId() {
   });
 }
 
+// ---------- 繰り返し・連続日程 ----------
+
+const REPEAT_MAX = 20; // GASのsaveEventsが1回で受け付ける上限（AI_MAX_EVENTS）に合わせる
+
+function addDaysStr(s, n) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+// 毎月は元の日付の「日」に揃える。その月に無い日（31日など）は月末に寄せる
+function addMonthsStr(s, n) {
+  const [y, m, d] = s.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 1 + n, Math.min(d, last))).toISOString().slice(0, 10);
+}
+
+function daysBetweenStr(a, b) {
+  const [ay, am, ad] = a.split('-').map(Number);
+  const [by, bm, bd] = b.split('-').map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+}
+
+// 1件の予定を、繰り返しの種類（daily/weekly/biweekly/monthly）と回数ぶんに増やす。
+// 1件目は元のIDのまま、2件目以降は新しいID。期間のある予定は日数を保ったままずらす
+function expandRepeat(ev, kind, count) {
+  const n = Math.max(1, Math.min(REPEAT_MAX, Number(count) || 1));
+  if (kind === 'none' || n === 1) return [ev];
+  const span = daysBetweenStr(ev['開始日'], ev['終了日'] || ev['開始日']);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    let start;
+    if (kind === 'daily') start = addDaysStr(ev['開始日'], i);
+    else if (kind === 'weekly') start = addDaysStr(ev['開始日'], i * 7);
+    else if (kind === 'biweekly') start = addDaysStr(ev['開始日'], i * 14);
+    else start = addMonthsStr(ev['開始日'], i);
+    out.push(Object.assign({}, ev, {
+      id: i === 0 ? ev.id : newId(),
+      '開始日': start,
+      '終了日': addDaysStr(start, span),
+    }));
+  }
+  return out;
+}
+
 function openEventEditor(ev) {
   const isNew = !ev || !ev.id;
   // 新規予定はここでIDを確定させる。保存ボタンが多重タップされても
@@ -452,6 +496,12 @@ function openEventEditor(ev) {
   $('evDelete').classList.toggle('hidden', isNew);
   $('evSave').disabled = false;
   $('evSave').textContent = '保存';
+  // 繰り返しは新規予定だけ。取込予定や既存予定の編集では出さない
+  state.aiNeedMember = false;
+  $('evRepeatRow').classList.toggle('hidden', !isNew);
+  $('evRepeat').value = 'none';
+  $('evRepeatCount').value = '4';
+  updateRepeatRow();
   state.evSelectedMembers = new Set((ev ? ev['メンバー'] : '').split(',').filter(String));
   renderEvMemberSelect();
   updateTimeRow();
@@ -481,9 +531,19 @@ function renderMemoLinks() {
   });
 }
 
+function updateRepeatRow() {
+  $('evRepeatCountWrap').classList.toggle('hidden', $('evRepeat').value === 'none');
+}
+
 function renderEvMemberSelect() {
   const box = $('evMembers');
   box.innerHTML = '';
+  // AIが担当者を読み取れなかったときは、選ぶまで保存できないことを枠と文言で示す
+  const need = state.aiNeedMember && state.evSelectedMembers.size === 0;
+  box.classList.toggle('need-pick', need);
+  $('evMembersLabel').textContent = need
+    ? '誰の予定ですか？（家族をタップして選んでください）'
+    : '関係する家族（タップで選択）';
   state.members.forEach((m) => {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -563,6 +623,10 @@ async function saveEvent() {
   if (!$('evStart').value) return toast('開始日を入力してください');
   let end = $('evEnd').value || $('evStart').value;
   if (end < $('evStart').value) end = $('evStart').value;
+  if (state.aiNeedMember && state.evSelectedMembers.size === 0) {
+    renderEvMemberSelect();
+    return toast('誰の予定か、家族をタップして選んでください');
+  }
   const ev = {
     id: state.editingEventId,
     'タイトル': title,
@@ -592,6 +656,17 @@ async function saveEvent() {
       closeOverlay('eventModal');
       renderGrid();
       toast('Googleカレンダーを更新して取り込み直しました');
+      return;
+    }
+    const repeatKind = $('evRepeatRow').classList.contains('hidden') ? 'none' : $('evRepeat').value;
+    if (repeatKind !== 'none') {
+      // 繰り返しは新規予定のみ。Gmail転記は大量送信を避けるため付けない（GAS側も転記しない）
+      const events = expandRepeat(Object.assign({}, ev, { 'Gmail転記': 'OFF' }), repeatKind, $('evRepeatCount').value);
+      const res = await api('saveEvents', { events });
+      applyData(res);
+      closeOverlay('eventModal');
+      renderGrid();
+      toast(`${res.saved}件の予定を登録しました`);
       return;
     }
     let data;
@@ -909,6 +984,9 @@ async function runAiParse() {
       // openEventEditorがev.id未設定＝新規と判定し、IDの発行と削除ボタン非表示を行う
       openEventEditor(ev);
       $('eventModalTitle').textContent = '予定を追加（AI作成・内容を確認してください）';
+      // 担当者を読み取れなかった場合は、家族を選ぶまで保存できないようにする
+      state.aiNeedMember = state.evSelectedMembers.size === 0;
+      renderEvMemberSelect();
     } else {
       openAiPickModal(events);
     }
@@ -1019,15 +1097,44 @@ function renderAiPickList() {
     body.appendChild(aiPickLine('ai-pick-title', ev['タイトル'] || '(タイトルなし)'));
     body.appendChild(aiPickLine('ai-pick-when', aiPickWhenText(ev)));
 
-    const names = (ev['メンバー'] || '').split(',').filter(String)
-      .map((id) => (memberById(id) || {})['名前']).filter(Boolean).join('・');
-    if (names) body.appendChild(aiPickLine('ai-pick-who', names));
+    // 担当者は読み取れた場合も含め、1件ずつ家族アイコンで付け外しできる
+    const who = document.createElement('div');
+    who.className = 'ai-pick-members';
+    body.appendChild(who);
+    renderAiPickMembers(who, ev);
     if (ev['メモ']) body.appendChild(aiPickLine('ai-pick-memo', ev['メモ']));
 
     row.appendChild(body);
     box.appendChild(row);
   });
   updateAiPickCount();
+}
+
+// 選択画面の1件ぶんの担当者チップ。行全体を描き直すとチェック状態が戻るため、ここだけ描き直す
+function renderAiPickMembers(box, ev) {
+  box.innerHTML = '';
+  const sel = new Set((ev['メンバー'] || '').split(',').filter(String));
+  box.classList.toggle('need-pick', sel.size === 0);
+  if (sel.size === 0) box.appendChild(aiPickLine('ai-pick-who-label', '誰の予定ですか？（タップして選択）'));
+  const chips = document.createElement('div');
+  chips.className = 'member-select ai-pick-chips';
+  state.members.forEach((m) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'member-chip' + (sel.has(m.id) ? ' sel' : '');
+    btn.innerHTML = `<div class="avatar" style="${avatarStyle(m)};border-color:${m['色']}">${avatarInitial(m)}</div>
+      <div class="chip-name">${esc(m['名前'])}</div>`;
+    btn.onclick = (e) => {
+      // 行のラベルに反応してチェックが切り替わらないようにする
+      e.preventDefault();
+      e.stopPropagation();
+      if (sel.has(m.id)) sel.delete(m.id); else sel.add(m.id);
+      ev['メンバー'] = [...sel].join(',');
+      renderAiPickMembers(box, ev);
+    };
+    chips.appendChild(btn);
+  });
+  box.appendChild(chips);
 }
 
 function aiPickLine(cls, text) {
@@ -1070,6 +1177,9 @@ function setAiPickAll(checked) {
 async function saveAiPicked() {
   const picked = aiPickChecked();
   if (picked.length === 0) return toast('登録する予定を選んでください');
+  if (picked.some((ev) => !ev['メンバー'])) {
+    return toast('誰の予定か決まっていない予定があります。家族をタップして選んでください');
+  }
   const btn = $('aiPickSave');
   // disabledにするとブラウザは以降のクリックを無視するため、多重タップでも二重送信されない
   btn.disabled = true;
@@ -1280,6 +1390,7 @@ function bindEvents() {
   $('aiPickSave').onclick = saveAiPicked;
   $('addEventFromDay').onclick = () => { closeOverlay('daySheet'); openEventEditor(null); };
   $('evAllDay').onchange = updateTimeRow;
+  $('evRepeat').onchange = updateRepeatRow;
   $('evMemo').oninput = renderMemoLinks;
   $('evSave').onclick = saveEvent;
   $('evDelete').onclick = deleteEvent;

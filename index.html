@@ -131,7 +131,21 @@
       <label>開始時刻 <input type="time" id="evTimeStart"></label>
       <label>終了時刻 <input type="time" id="evTimeEnd"></label>
     </div>
-    <div class="field-label">関係する家族（タップで選択）</div>
+    <div id="evRepeatRow" class="repeat-row hidden">
+      <label>繰り返し
+        <select id="evRepeat">
+          <option value="none">しない</option>
+          <option value="daily">毎日</option>
+          <option value="weekly">毎週（同じ曜日）</option>
+          <option value="biweekly">隔週（2週間ごと）</option>
+          <option value="monthly">毎月（同じ日）</option>
+        </select>
+      </label>
+      <label id="evRepeatCountWrap" class="hidden">回数（最大20回）
+        <input type="number" id="evRepeatCount" min="2" max="20" value="4" inputmode="numeric">
+      </label>
+    </div>
+    <div id="evMembersLabel" class="field-label">関係する家族（タップで選択）</div>
     <div id="evMembers" class="member-select"></div>
     <label>メモ
       <textarea id="evMemo" rows="6" placeholder="URLを書くとタップで開けるようになります"></textarea>
