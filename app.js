@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v28';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -515,6 +515,7 @@ function openEventEditor(ev) {
   $('evDelete').classList.toggle('hidden', isNew);
   $('evSave').disabled = false;
   $('evSave').textContent = '保存';
+  state.dupConfirmKey = '';
   // 繰り返しは新規予定だけ。取込予定や既存予定の編集では出さない
   state.aiNeedMember = false;
   $('evRepeatRow').classList.toggle('hidden', !isNew);
@@ -659,6 +660,16 @@ async function saveEvent() {
     'Gmail転記': $('evGmail').checked ? 'ON' : 'OFF',
     '要対応': $('evTodo').checked ? 'ON' : 'OFF',
   };
+  // 同じ予定がすでにあれば、1回目の保存では登録せず確認を出す（もう一度押すと登録）
+  const dup = findDuplicateEvent(state.events, ev);
+  if (dup) {
+    const key = ev['タイトル'] + '|' + ev['開始日'];
+    if (state.dupConfirmKey !== key) {
+      state.dupConfirmKey = key;
+      $('evSave').textContent = 'それでも登録';
+      return toast(`同じ予定が登録済みです（${dup['開始日']}「${dup['タイトル']}」）。それでも登録するなら、もう一度押してください`);
+    }
+  }
   // Googleカレンダー取込予定の編集時はタグを引き継ぐ（次回同期で洗い替え対象に保つ）
   const orig = state.events.find((x) => x.id === state.editingEventId);
   if (orig && orig['取込元']) {
@@ -704,6 +715,13 @@ async function saveEvent() {
   });
   saveBtn.disabled = false;
   saveBtn.textContent = '保存';
+}
+
+// 同じタイトル・同じ開始日の別の予定があれば返す（空白の種類と全角半角のゆれは無視する）
+function findDuplicateEvent(events, ev) {
+  const norm = (t) => String(t || '').normalize('NFKC').replace(/\s+/g, '');
+  const key = norm(ev['タイトル']);
+  return (events || []).find((x) => x.id !== ev.id && x['開始日'] === ev['開始日'] && norm(x['タイトル']) === key) || null;
 }
 
 // 保存時に通信エラーになった予定が、実際にはサーバーへ届いているかを確かめる

@@ -246,3 +246,11 @@ test('aiRepeatText: 種類・回数・最初と最後の日を出す', () => {
   assert.strictEqual(aiRepeatText(ev), '毎週・全8回（11/10(火)〜12/29(火)）');
   assert.strictEqual(aiRepeatText({ '開始日': '2026-11-10' }), '');
 });
+
+test('findDuplicateEvent: 同じタイトルと日付の別IDを見つける（空白のゆれは無視・自分自身は除く）', () => {
+  const { findDuplicateEvent } = new Function(pickFunction('findDuplicateEvent') + '\nreturn { findDuplicateEvent };')();
+  const events = [{ id: 'a', 'タイトル': '竹中敏雄　逝去', '開始日': '2026-09-09' }];
+  assert.strictEqual(findDuplicateEvent(events, { id: 'b', 'タイトル': '竹中敏雄 逝去', '開始日': '2026-09-09' }).id, 'a');
+  assert.strictEqual(findDuplicateEvent(events, { id: 'a', 'タイトル': '竹中敏雄　逝去', '開始日': '2026-09-09' }), null);
+  assert.strictEqual(findDuplicateEvent(events, { id: 'b', 'タイトル': '竹中敏雄　逝去', '開始日': '2026-09-10' }), null);
+});
