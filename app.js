@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v30';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -241,6 +241,39 @@ function renderMemberBar() {
   bar.appendChild(add);
 }
 
+// 指定の期間（開始日〜終了日）にかかる予定のうち、担当の家族が全員「隠す」設定で見えない予定の件数。
+// 祝日は数えない（祝日は専用の表示切替があるため）
+function countHiddenEvents(events, hidden, fromStr, toStr) {
+  return (events || []).filter((ev) => {
+    if (!ev['開始日'] || isHoliday(ev)) return false;
+    if (ev['開始日'] > toStr || (ev['終了日'] || ev['開始日']) < fromStr) return false;
+    const ids = (ev['メンバー'] || '').split(',').filter(String);
+    return ids.length > 0 && ids.every((id) => hidden.has(id));
+  }).length;
+}
+
+// 隠している家族のせいで見えない予定が表示中の月にあれば、帯で知らせる（タップで全員表示に戻す）
+function renderHiddenNotice() {
+  let el = $('hiddenNotice');
+  if (!el) {
+    el = document.createElement('button');
+    el.id = 'hiddenNotice';
+    el.className = 'hidden-notice hidden';
+    el.onclick = () => {
+      state.hidden.clear();
+      localStorage.setItem(LS_HIDDEN, JSON.stringify([]));
+      renderMemberBar();
+      renderGrid();
+    };
+    $('memberBar').insertAdjacentElement('afterend', el);
+  }
+  const from = `${state.year}-${pad(state.month + 1)}-01`;
+  const to = `${state.year}-${pad(state.month + 1)}-31`;
+  const n = countHiddenEvents(state.events, state.hidden, from, to);
+  el.textContent = `非表示の家族の予定がこの月に${n}件あります（タップで全員表示）`;
+  el.classList.toggle('hidden', n === 0);
+}
+
 function toggleMember(id) {
   if (state.hidden.has(id)) state.hidden.delete(id);
   else state.hidden.add(id);
@@ -252,6 +285,7 @@ function toggleMember(id) {
 function renderGrid() {
   // 予定が変わるたびに必ずここを通るので、やることの件数もあわせて出し直す
   renderTodoBadge();
+  renderHiddenNotice();
   const grid = $('monthGrid');
   grid.innerHTML = '';
   const first = new Date(state.year, state.month, 1);

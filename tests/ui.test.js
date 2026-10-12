@@ -254,3 +254,20 @@ test('findDuplicateEvent: 同じタイトルと日付の別IDを見つける（�
   assert.strictEqual(findDuplicateEvent(events, { id: 'a', 'タイトル': '竹中敏雄　逝去', '開始日': '2026-09-09' }), null);
   assert.strictEqual(findDuplicateEvent(events, { id: 'b', 'タイトル': '竹中敏雄　逝去', '開始日': '2026-09-10' }), null);
 });
+
+test('countHiddenEvents: 担当が全員隠れている予定だけ数える（一部だけ隠れ・祝日・期間外は数えない）', () => {
+  const { countHiddenEvents } = new Function(
+    "const HOLIDAY_MEMBER = '__holiday__';\n" + pickFunction('isHoliday') + '\n' + pickFunction('countHiddenEvents') + '\nreturn { countHiddenEvents };')();
+  const hidden = new Set(['x', 'y']);
+  const ev = (m, d, e) => ({ 'メンバー': m, '開始日': d, '終了日': e || d });
+  const events = [
+    ev('x,y', '2026-09-09'),          // 全員隠れ → 数える
+    ev('x,z', '2026-09-10'),          // zは見える → 数えない
+    ev('__holiday__', '2026-09-21'),  // 祝日 → 数えない
+    ev('x', '2026-10-01'),            // 期間外 → 数えない
+    ev('y', '2026-08-30', '2026-09-02'), // 期間にかかる → 数える
+    ev('', '2026-09-05'),             // 担当なし → 数えない
+  ];
+  assert.strictEqual(countHiddenEvents(events, hidden, '2026-09-01', '2026-09-31'), 2);
+  assert.strictEqual(countHiddenEvents(events, new Set(), '2026-09-01', '2026-09-31'), 0);
+});
