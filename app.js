@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v28';
+const APP_VERSION = 'v29';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -1113,10 +1113,12 @@ async function clearTodo(id) {
 // ---------- AIが見つけた予定の選択 ----------
 
 let aiFoundEvents = []; // 選択画面に表示している、AIが読み取った予定
+let aiDupConfirmKey = ''; // 重複の確認を出した時の選択内容（同じ選択でもう一度押されたら登録する）
 
 function openAiPickModal(events) {
   aiFoundEvents = events || [];
   if (aiFoundEvents.length === 0) return toast('予定を見つけられませんでした');
+  aiDupConfirmKey = '';
   renderAiPickList();
   $('aiPickModal').classList.remove('hidden');
 }
@@ -1213,6 +1215,8 @@ function updateAiPickCount() {
   const n = aiPickChecked().length;
   $('aiPickCount').textContent = `${n} / ${aiFoundEvents.length}件を選択中`;
   $('aiPickSave').disabled = n === 0;
+  aiDupConfirmKey = '';
+  $('aiPickSave').textContent = '選んだ予定を登録';
 }
 
 function setAiPickAll(checked) {
@@ -1227,6 +1231,16 @@ async function saveAiPicked() {
     return toast('誰の予定か決まっていない予定があります。家族をタップして選んでください');
   }
   const btn = $('aiPickSave');
+  // 登録済みの予定と同じものが混ざっていたら、1回目は登録せず確認を出す（同じ選択でもう一度押すと登録）
+  const dups = picked.filter((ev) => findDuplicateEvent(state.events, { id: '', 'タイトル': ev['タイトル'], '開始日': ev['開始日'] }));
+  if (dups.length > 0) {
+    const key = picked.map((ev) => ev['タイトル'] + '|' + ev['開始日']).join(',');
+    if (aiDupConfirmKey !== key) {
+      aiDupConfirmKey = key;
+      btn.textContent = 'それでも登録';
+      return toast(`登録済みと同じ予定が${dups.length}件あります（${dups[0]['開始日']}「${dups[0]['タイトル']}」など）。外すか、それでも登録するならもう一度押してください`);
+    }
+  }
   // disabledにするとブラウザは以降のクリックを無視するため、多重タップでも二重送信されない
   btn.disabled = true;
   btn.textContent = '登録中…';
