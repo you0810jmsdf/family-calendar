@@ -132,6 +132,9 @@ body {
 }
 
 .holiday-avatar { border-color: #d66 !important; background: #fff; font-size: 22px; }
+/* 受注（オーダー進捗から自動で入る予定）。帯の斜線はJS側（orderBackground）、ここは縁取りと切替ボタン */
+.member-chip .avatar.order-avatar { border-color: #8a6d3b !important; background: #fff; color: #8a6d3b; font-size: 20px; }
+.ev-bar.order { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55); }
 .ai-photo-btn { margin-top: -4px; }
 .ai-img-preview {
   width: 100%; height: 120px; border-radius: 10px; border: 1px solid var(--line);
@@ -304,6 +307,16 @@ body {
 }
 .gcal-notice p { margin-bottom: 8px; }
 .gcal-notice .btn-secondary { display: block; text-align: center; text-decoration: none; }
+
+/* ---------- 受注の予定（見るだけ） ---------- */
+.order-notice {
+  background: #eef3ff; border: 1px solid #b9c9f2; border-radius: 10px;
+  padding: 12px; margin-bottom: 14px; font-size: 13px; line-height: 1.6;
+}
+.order-notice p { margin-bottom: 8px; }
+.order-notice .btn-secondary { display: block; text-align: center; text-decoration: none; }
+.order-readonly .member-select { pointer-events: none; opacity: 0.6; }
+.day-event-item.order .bar { width: 6px; }
 
 /* ---------- メモ内のリンク ---------- */
 /* 日別一覧のメモに書かれたURL。指で押せるよう下線＋上下の余白を持たせる */

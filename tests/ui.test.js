@@ -257,7 +257,9 @@ test('findDuplicateEvent: 同じタイトルと日付の別IDを見つける（�
 
 test('countHiddenEvents: 担当が全員隠れている予定だけ数える（一部だけ隠れ・祝日・期間外は数えない）', () => {
   const { countHiddenEvents } = new Function(
-    "const HOLIDAY_MEMBER = '__holiday__';\n" + pickFunction('isHoliday') + '\n' + pickFunction('countHiddenEvents') + '\nreturn { countHiddenEvents };')();
+    "const HOLIDAY_MEMBER = '__holiday__';\nconst ORDER_SOURCE = 'orderprogress';\n" +
+    pickFunction('isHoliday') + '\n' + pickFunction('isOrderEvent') + '\n' +
+    pickFunction('countHiddenEvents') + '\nreturn { countHiddenEvents };')();
   const hidden = new Set(['x', 'y']);
   const ev = (m, d, e) => ({ 'メンバー': m, '開始日': d, '終了日': e || d });
   const events = [
@@ -270,4 +272,41 @@ test('countHiddenEvents: 担当が全員隠れている予定だけ数える（�
   ];
   assert.strictEqual(countHiddenEvents(events, hidden, '2026-09-01', '2026-09-31'), 2);
   assert.strictEqual(countHiddenEvents(events, new Set(), '2026-09-01', '2026-09-31'), 0);
+});
+
+// ---------- 受注（オーダー進捗から自動で入る予定）----------
+
+const loadOrder = () => new Function(
+  "const HOLIDAY_MEMBER = '__holiday__';\nconst ORDER_SOURCE = 'orderprogress';\n" +
+  pickFunction('isHoliday') + '\n' + pickFunction('isOrderEvent') + '\n' +
+  pickFunction('privateFirst') + '\n' + pickFunction('countHiddenEvents') + '\n' +
+  'return { isOrderEvent, privateFirst, countHiddenEvents };')();
+
+test('isOrderEvent: 取込元が orderprogress の予定だけが受注（Googleカレンダー取込・手入力・空は違う）', () => {
+  const { isOrderEvent } = loadOrder();
+  assert.strictEqual(isOrderEvent({ '取込元': 'orderprogress' }), true);
+  assert.strictEqual(isOrderEvent({ '取込元': 'gcal' }), false);
+  assert.strictEqual(isOrderEvent({ '取込元': '' }), false);
+  assert.strictEqual(isOrderEvent({}), false);
+  assert.strictEqual(isOrderEvent(undefined), false);
+});
+
+test('privateFirst: 私的な予定を先に・受注を後ろに並べ、同じグループの中の順は保つ', () => {
+  const { privateFirst } = loadOrder();
+  const p = (id) => ({ id, '取込元': '' });
+  const o = (id) => ({ id, '取込元': 'orderprogress' });
+  const out = privateFirst([o('o1'), p('p1'), o('o2'), p('p2'), { id: 'g', '取込元': 'gcal' }]);
+  assert.deepStrictEqual(out.map((e) => e.id), ['p1', 'p2', 'g', 'o1', 'o2']);
+  // 受注が無いときは入力と同じ順（月表示の段の割り当てが従来と変わらない）
+  const only = [p('a'), p('b'), p('c')];
+  assert.deepStrictEqual(privateFirst(only).map((e) => e.id), ['a', 'b', 'c']);
+});
+
+test('countHiddenEvents: 受注は担当が隠れていても数えない（受注は専用の切替があるため）', () => {
+  const { countHiddenEvents } = loadOrder();
+  const events = [
+    { 'メンバー': 'x', '開始日': '2026-09-09', '終了日': '2026-09-09', '取込元': 'orderprogress' },
+    { 'メンバー': 'x', '開始日': '2026-09-09', '終了日': '2026-09-09', '取込元': '' },
+  ];
+  assert.strictEqual(countHiddenEvents(events, new Set(['x']), '2026-09-01', '2026-09-31'), 1);
 });

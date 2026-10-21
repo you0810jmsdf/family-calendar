@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v31';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -23,10 +23,14 @@ const state = {
   memberPhoto: '',
   hidden: new Set(JSON.parse(localStorage.getItem(LS_HIDDEN) || '[]')),
   showHolidays: localStorage.getItem('famcal_holidays') !== 'off',
+  showOrders: localStorage.getItem('famcal_orders') !== 'off',
   offline: false,
 };
 
 const HOLIDAY_MEMBER = '__holiday__';
+// オーダー進捗から自動で入る予定（受注）の「取込元」。私的な予定と区別する印。
+// 書き込み側はオーダー進捗GAS（family_calendar_sync.js）。値を変えるときは両方そろえる
+const ORDER_SOURCE = 'orderprogress';
 
 const $ = (id) => document.getElementById(id);
 
@@ -149,15 +153,30 @@ function eventsOnDay(dstr) {
   return state.events
     .filter((ev) => ev['開始日'] && ev['開始日'] <= dstr && dstr <= (ev['終了日'] || ev['開始日']))
     .filter(isEventVisible)
-    .sort((a, b) => (a['終日'] === 'ON' ? '0' : '1' + a['開始時刻']).localeCompare(b['終日'] === 'ON' ? '0' : '1' + b['開始時刻']));
+    // 受注は私的な予定の後ろへ。同じグループの中は従来どおり終日→開始時刻の順
+    .sort((a, b) => (Number(isOrderEvent(a)) - Number(isOrderEvent(b))) ||
+      (a['終日'] === 'ON' ? '0' : '1' + a['開始時刻']).localeCompare(b['終日'] === 'ON' ? '0' : '1' + b['開始時刻']));
 }
 
 function isHoliday(ev) {
   return (ev['メンバー'] || '') === HOLIDAY_MEMBER;
 }
 
+// オーダー進捗から自動で入った予定か（私的な予定と区別する印は「取込元」）
+function isOrderEvent(ev) {
+  return !!ev && ev['取込元'] === ORDER_SOURCE;
+}
+
+// 私的な予定を先に、受注を後ろに並べる（同じグループの中の順は変えない）。
+// 月表示の帯は1週あたりの段数に限りがある。受注が私的な予定を押し出さないよう、
+// 段は私的な予定から先に使い、受注は余った段だけに入れる
+function privateFirst(evs) {
+  return evs.filter((ev) => !isOrderEvent(ev)).concat(evs.filter(isOrderEvent));
+}
+
 function isEventVisible(ev) {
   if (isHoliday(ev)) return state.showHolidays;
+  if (isOrderEvent(ev) && !state.showOrders) return false;
   const ids = (ev['メンバー'] || '').split(',').filter(String);
   if (ids.length === 0) return true;
   return ids.some((id) => !state.hidden.has(id));
@@ -185,6 +204,12 @@ function eventBackground(ev, dir) {
     .map((c, i) => `${c} ${(i * step).toFixed(2)}%, ${c} ${((i + 1) * step).toFixed(2)}%`)
     .join(', ');
   return `linear-gradient(${dir || 'to right'}, ${stops})`;
+}
+
+// 受注は担当の色に白い斜線を重ねて、私的な予定の帯と一目で見分けられるようにする
+function orderBackground(ev, dir) {
+  return 'repeating-linear-gradient(135deg, rgba(255,255,255,.28) 0 4px, rgba(255,255,255,0) 4px 8px), ' +
+    eventBackground(ev, dir);
 }
 
 function memberById(id) {
@@ -234,6 +259,19 @@ function renderMemberBar() {
     renderGrid();
   };
   bar.appendChild(hol);
+  // 受注の予定が1件でもあるときだけ出す（オーダー進捗の連動が動くまでは画面を変えない）
+  if (state.events.some(isOrderEvent)) {
+    const ord = document.createElement('button');
+    ord.className = 'member-chip' + (state.showOrders ? '' : ' off');
+    ord.innerHTML = '<div class="avatar order-avatar">🛠️</div><div class="chip-name">受注</div>';
+    ord.onclick = () => {
+      state.showOrders = !state.showOrders;
+      try { localStorage.setItem('famcal_orders', state.showOrders ? 'on' : 'off'); } catch (e) { /* 保存できなくても切替は効く */ }
+      renderMemberBar();
+      renderGrid();
+    };
+    bar.appendChild(ord);
+  }
   const add = document.createElement('button');
   add.className = 'member-chip add-chip';
   add.innerHTML = '<div class="avatar">＋</div><div class="chip-name">追加</div>';
@@ -242,10 +280,10 @@ function renderMemberBar() {
 }
 
 // 指定の期間（開始日〜終了日）にかかる予定のうち、担当の家族が全員「隠す」設定で見えない予定の件数。
-// 祝日は数えない（祝日は専用の表示切替があるため）
+// 祝日・受注は数えない（どちらも専用の表示切替があるため）
 function countHiddenEvents(events, hidden, fromStr, toStr) {
   return (events || []).filter((ev) => {
-    if (!ev['開始日'] || isHoliday(ev)) return false;
+    if (!ev['開始日'] || isHoliday(ev) || isOrderEvent(ev)) return false;
     if (ev['開始日'] > toStr || (ev['終了日'] || ev['開始日']) < fromStr) return false;
     const ids = (ev['メンバー'] || '').split(',').filter(String);
     return ids.length > 0 && ids.every((id) => hidden.has(id));
@@ -345,27 +383,30 @@ function renderGrid() {
 
     const laneEnd = [];                 // 各段の占有済み最終列
     const overflow = new Array(7).fill(0);
-    evs.forEach((ev) => {
+    const ordOverflow = new Array(7).fill(0); // 段に入りきらなかった受注の件数（私的な予定とは分けて数える）
+    privateFirst(evs).forEach((ev) => {
+      const isOrd = isOrderEvent(ev);
       const c0 = colOf(ev['開始日']);
       const c1 = colOf(ev['終了日'] || ev['開始日']);
       let lane = 0;
       while (lane < laneEnd.length && laneEnd[lane] >= c0) lane++;
       if (lane >= LANES) {
-        for (let c = c0; c <= c1; c++) overflow[c]++;
+        for (let c = c0; c <= c1; c++) (isOrd ? ordOverflow : overflow)[c]++;
         return;
       }
       laneEnd[lane] = c1;
       const bar = document.createElement('button');
       bar.type = 'button';
       bar.className = 'ev-bar' +
+        (isOrd ? ' order' : '') +
         (ev['開始日'] < wStart ? ' cont-l' : '') +
         ((ev['終了日'] || ev['開始日']) > wEnd ? ' cont-r' : '');
       bar.style.cssText =
         `left:calc(${c0} * 100% / 7 + 1px);` +
         `width:calc(${c1 - c0 + 1} * 100% / 7 - 3px);` +
         `top:${LANE_TOP + lane * LANE_H}px;` +
-        `background:${eventBackground(ev)}`;
-      bar.textContent = ev['タイトル'];
+        `background:${isOrd ? orderBackground(ev) : eventBackground(ev)}`;
+      bar.textContent = (isOrd ? '🛠 ' : '') + ev['タイトル'];
       bar.onclick = (e) => {
         e.stopPropagation();
         state.selectedDate = ev['開始日'];
@@ -373,14 +414,15 @@ function renderGrid() {
       };
       weekEl.appendChild(bar);
     });
-    overflow.forEach((n, i) => {
-      if (!n) return;
+    for (let i = 0; i < 7; i++) {
+      if (!overflow[i] && !ordOverflow[i]) continue;
       const m = document.createElement('div');
       m.className = 'ev-more-abs';
       m.style.left = `calc(${i} * 100% / 7 + 2px)`;
-      m.textContent = '+' + n;
+      m.textContent = (overflow[i] ? '+' + overflow[i] : '') +
+        (ordOverflow[i] ? (overflow[i] ? ' ' : '') + '🛠' + ordOverflow[i] : '');
       weekEl.appendChild(m);
-    });
+    }
 
     grid.appendChild(weekEl);
   }
@@ -410,20 +452,26 @@ function openDaySheet(dstr) {
       if (!m) return '';
       return `<div class="mini" style="${avatarStyle(m)}">${avatarInitial(m)}</div>`;
     }).join('');
-    const gcalMark = ev['取込元'] === 'gcal' ? '📅 ' : '';
-    item.innerHTML = `<div class="bar" style="background:${eventBackground(ev, 'to bottom')}"></div>
+    const isOrd = isOrderEvent(ev);
+    if (isOrd) item.classList.add('order');
+    const gcalMark = isOrd ? '🛠 受注 ・ ' : ev['取込元'] === 'gcal' ? '📅 ' : '';
+    const barBg = isOrd ? orderBackground(ev, 'to bottom') : eventBackground(ev, 'to bottom');
+    item.innerHTML = `<div class="bar" style="background:${barBg}"></div>
       <div class="info"><div class="t">${esc(ev['タイトル'])}</div>
       <div class="sub">${gcalMark}${esc(time)}${esc(period)}${ev['メモ'] ? ' ・ ' + linkify(ev['メモ']) : ''}</div></div>
       <div class="faces">${faces}</div>`;
-    const lineBtn = document.createElement('button');
-    lineBtn.type = 'button';
-    lineBtn.className = 'line-btn';
-    lineBtn.textContent = 'LINE';
-    lineBtn.onclick = (e) => {
-      e.stopPropagation();
-      shareEventToLine(ev);
-    };
-    item.appendChild(lineBtn);
+    // 受注には依頼者の名前が入っているため、家族のLINEへ誤って送らないよう共有ボタンを出さない
+    if (!isOrd) {
+      const lineBtn = document.createElement('button');
+      lineBtn.type = 'button';
+      lineBtn.className = 'line-btn';
+      lineBtn.textContent = 'LINE';
+      lineBtn.onclick = (e) => {
+        e.stopPropagation();
+        shareEventToLine(ev);
+      };
+      item.appendChild(lineBtn);
+    }
     // メモ内リンクをタップしたときは編集画面を開かず、リンク先へ飛ばす
     item.onclick = (e) => {
       if (e.target.closest && e.target.closest('a.memo-link')) return;
@@ -560,7 +608,24 @@ function openEventEditor(ev) {
   renderEvMemberSelect();
   updateTimeRow();
   applyGcalNotice(ev);
+  applyOrderNotice(ev);
   $('eventModal').classList.remove('hidden');
+}
+
+// 受注の予定は、オーダー進捗の同期が毎時上書きする。ここで直しても戻ってしまうため、
+// 編集画面は見るだけにして、案内と進捗ページへのリンクを出す。
+// 編集画面は他の予定と使い回すので、受注でないときは必ず元の状態へ戻す
+const ORDER_LOCK_FIELDS = ['evTitle', 'evStart', 'evEnd', 'evAllDay', 'evTimeStart', 'evTimeEnd', 'evMemo', 'evTodo', 'evGmail'];
+function applyOrderNotice(ev) {
+  const isOrd = isOrderEvent(ev);
+  $('evOrderNotice').classList.toggle('hidden', !isOrd);
+  $('eventModal').classList.toggle('order-readonly', isOrd);
+  ORDER_LOCK_FIELDS.forEach((id) => { $(id).disabled = isOrd; });
+  $('evSave').classList.toggle('hidden', isOrd);
+  if (isOrd) {
+    $('eventModalTitle').textContent = '受注の予定（自動で更新されます）';
+    $('evDelete').classList.add('hidden');
+  }
 }
 
 // 編集画面のメモはtextareaでリンクにできないため、直下にタップできるリンクを並べる
@@ -672,6 +737,10 @@ function updateTimeRow() {
 }
 
 async function saveEvent() {
+  // 画面側で保存ボタンは隠しているが、万一ここへ来ても受注の予定は書き換えない
+  if (isOrderEvent(state.events.find((x) => x.id === state.editingEventId))) {
+    return toast('受注の予定はここでは変更できません（オーダー進捗で更新してください）');
+  }
   const title = $('evTitle').value.trim();
   if (!title) return toast('タイトルを入力してください');
   if (!$('evStart').value) return toast('開始日を入力してください');
@@ -777,6 +846,9 @@ function isSameSavedEvent(saved, sent) {
 }
 
 async function deleteEvent() {
+  if (isOrderEvent(state.events.find((x) => x.id === state.editingEventId))) {
+    return toast('受注の予定はここでは削除できません（オーダー進捗で更新してください）');
+  }
   if (!confirm('この予定を削除しますか？')) return;
   await busy(async () => {
     applyData(await api('deleteEvent', { id: state.editingEventId }));
