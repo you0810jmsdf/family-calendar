@@ -310,3 +310,31 @@ test('countHiddenEvents: 受注は担当が隠れていても数えない（受�
   ];
   assert.strictEqual(countHiddenEvents(events, new Set(['x']), '2026-09-01', '2026-09-31'), 1);
 });
+
+// ---------- 月表示の寸法（画面の残りの大きさから行の高さ・段数・文字を決める）----------
+
+const { calcGridLayout } = new Function(pickFunction('calcGridLayout') + '\nreturn { calcGridLayout };')();
+
+test('calcGridLayout: 広い画面は文字12px・段数が増え、スマホは従来どおり10px・15px', () => {
+  // 実測した画面（PC 1356x930 で上部92px／スマホ 375x812 で上部137px／タブレット 768x1024 で上部140px）
+  const pc = calcGridLayout(930, 92, 1356);
+  assert.deepStrictEqual([pc.fs, pc.laneH, pc.barH, pc.rowH, pc.lanes], [12, 17, 15, 136, 6]);
+  const phone = calcGridLayout(812, 137, 375);
+  assert.deepStrictEqual([phone.fs, phone.laneH, phone.barH, phone.rowH, phone.lanes], [10, 15, 13, 112, 5]);
+  const tablet = calcGridLayout(1024, 140, 768);
+  assert.deepStrictEqual([tablet.fs, tablet.laneH, tablet.rowH, tablet.lanes], [11, 16, 144, 6]);
+});
+
+test('calcGridLayout: 低い画面でも最低4段が入り、行の高さは4px刻み。幅が測れないときは最小の高さ', () => {
+  const low = calcGridLayout(600, 92, 1280);
+  assert.ok(low.lanes >= 4 && low.rowH >= 98);
+  // 画面のわずかな高さの違いで寸法が変わらない（描き直しの連発を防ぐ）
+  assert.strictEqual(calcGridLayout(931, 92, 1356).rowH % 4, 0);
+  assert.strictEqual(calcGridLayout(931, 92, 1356).rowH, calcGridLayout(930, 92, 1356).rowH);
+  assert.ok(Math.abs(calcGridLayout(933, 92, 1356).rowH - calcGridLayout(930, 92, 1356).rowH) <= 4);
+  // 表が隠れていて幅が0のときは、画面の高さに合わせず最小の高さ・4段
+  const hidden = calcGridLayout(930, 0, 0);
+  assert.deepStrictEqual([hidden.rowH, hidden.lanes, hidden.fs], [98, 4, 10]);
+  // 巨大な画面でも行は伸びすぎない
+  assert.strictEqual(calcGridLayout(4000, 92, 3000).rowH, 240);
+});

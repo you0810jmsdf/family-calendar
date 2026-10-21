@@ -39,8 +39,8 @@ body {
 
 /* ---------- ヘッダー ---------- */
 .app-header {
-  display: flex; align-items: center; gap: 8px;
-  padding: calc(var(--safe-top) + 10px) 14px 10px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: calc(var(--safe-top) + 6px) 12px 6px;
   background: var(--card); border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 10;
 }
@@ -56,11 +56,13 @@ body {
 .icon-btn { border: none; background: none; font-size: 22px; color: var(--muted); padding: 4px; }
 
 /* ---------- メンバーバー ---------- */
+/* ヘッダーの中に入る。狭い画面（スマホ）は2行目に全幅で出し、広い画面は月の移動と同じ1行（下の @media） */
 .member-bar {
-  display: flex; gap: 12px; padding: 10px 14px; overflow-x: auto;
-  background: var(--card); border-bottom: 1px solid var(--line);
-  -webkit-overflow-scrolling: touch;
+  display: flex; align-items: center; gap: 8px; overflow-x: auto; min-width: 0;
+  order: 9; flex: 1 0 100%; padding: 0;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
 }
+.member-bar::-webkit-scrollbar { display: none; }
 .member-chip { text-align: center; flex-shrink: 0; border: none; background: none; }
 .member-chip .avatar {
   width: 48px; height: 48px; border-radius: 50%; border: 3px solid;
@@ -69,7 +71,20 @@ body {
   background-size: cover; background-position: center; margin: 0 auto;
 }
 .member-chip .chip-name { font-size: 11px; margin-top: 3px; color: var(--text); }
-.member-chip.off { opacity: 0.3; filter: grayscale(1); }
+/* 隠している家族は、アイコンだけ薄くする。名前まで薄くすると誰か読めない */
+.member-chip.off .avatar { opacity: 0.35; filter: grayscale(1); }
+.member-chip.off .chip-name { color: var(--muted); }
+/* 上部のスペースを週の行に回すため、画面上部の家族アイコンは小さくする（編集画面の家族選択は別ルールのまま） */
+.member-bar .member-chip { padding: 0 1px; }
+.member-bar .member-chip .avatar { width: 34px; height: 34px; border-width: 2px; font-size: 15px; }
+.member-bar .member-chip .avatar.holiday-avatar,
+.member-bar .member-chip .avatar.order-avatar { font-size: 16px; }
+.member-bar .member-chip.add-chip .avatar { font-size: 20px; }
+.member-bar .member-chip .chip-name { font-size: 10px; margin-top: 1px; white-space: nowrap; }
+@media (min-width: 960px) {
+  .app-header .member-bar { order: 1; flex: 1 1 0; margin: 0 6px; }
+  .app-header .today-btn, .app-header .todo-btn, .app-header #settingsBtn { order: 2; }
+}
 .member-chip.add-chip .avatar {
   border: 2px dashed var(--muted); color: var(--muted); background: none; font-size: 26px;
 }
@@ -105,16 +120,17 @@ body {
   font-size: 8px; color: #d66; text-align: center; line-height: 1.1;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* 帯の高さ・文字の大きさは JS（calcGridLayout）が画面の大きさから決めて --bar-h / --bar-fs に入れる */
 .ev-bar {
-  position: absolute; height: 13px; line-height: 13px; z-index: 2;
-  font-size: 10px; color: #fff; border: none; border-radius: 4px;
-  padding: 0 4px; text-align: left;
+  position: absolute; height: var(--bar-h, 13px); line-height: var(--bar-h, 13px); z-index: 2;
+  font-size: var(--bar-fs, 10px); color: #fff; border: none; border-radius: 4px;
+  padding: 0 4px; text-align: left; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ev-bar.cont-l { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .ev-bar.cont-r { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .ev-more-abs {
-  position: absolute; bottom: 1px; font-size: 9px; color: var(--muted);
+  position: absolute; bottom: 1px; font-size: var(--more-fs, 9px); color: var(--muted);
   pointer-events: none; z-index: 1;
 }
 
@@ -379,4 +395,5 @@ hr { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
   font-size: 14px; padding: 10px 18px; border-radius: 20px; z-index: 50;
   max-width: 86%; text-align: center;
 }
-.hidden-notice { display: block; width: calc(100% - 24px); margin: 4px 12px 0; padding: 6px 10px; border: 1px solid var(--accent, #4a7cf0); border-radius: 8px; background: none; color: var(--text); font-size: 12px; text-align: left; cursor: pointer; }
+/* 隠している家族の予定が表示中の月にあるときの印。家族アイコン列の末尾に置く小さなボタン（押すと全員表示に戻す） */
+.hidden-pill { position: sticky; right: 0; flex-shrink: 0; margin-left: 4px; padding: 3px 9px; background-color: var(--card); box-shadow: -8px 0 8px var(--card); border: 1px solid var(--accent, #4a7cf0); border-radius: 12px; color: var(--text); font-size: 11px; white-space: nowrap; cursor: pointer; }

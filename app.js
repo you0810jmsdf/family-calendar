@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v31';
+const APP_VERSION = 'v32';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -277,6 +277,18 @@ function renderMemberBar() {
   add.innerHTML = '<div class="avatar">＋</div><div class="chip-name">追加</div>';
   add.onclick = () => openMemberEditor(null);
   bar.appendChild(add);
+  // 隠している家族の予定がこの月にあるときの印（件数・表示は renderHiddenNotice が決める）。
+  // 右端に貼り付く（styles.css）ので、スマホで横にスクロールしても見える
+  const pill = document.createElement('button');
+  pill.id = 'hiddenNotice';
+  pill.className = 'hidden-pill hidden';
+  pill.onclick = () => {
+    state.hidden.clear();
+    localStorage.setItem(LS_HIDDEN, JSON.stringify([]));
+    renderMemberBar();
+    renderGrid();
+  };
+  bar.appendChild(pill);
 }
 
 // 指定の期間（開始日〜終了日）にかかる予定のうち、担当の家族が全員「隠す」設定で見えない予定の件数。
@@ -290,27 +302,57 @@ function countHiddenEvents(events, hidden, fromStr, toStr) {
   }).length;
 }
 
-// 隠している家族のせいで見えない予定が表示中の月にあれば、帯で知らせる（タップで全員表示に戻す）
+// 隠している家族のせいで見えない予定が表示中の月にあれば、家族アイコン列の右端に小さな印を出す
+// （タップで全員表示に戻す）。印そのものは renderMemberBar が作り、ここで件数と表示を更新する。
+// 以前は1行ぶんの帯だったが、上部のスペースを週の行に回すため小さな印にした
 function renderHiddenNotice() {
-  let el = $('hiddenNotice');
-  if (!el) {
-    el = document.createElement('button');
-    el.id = 'hiddenNotice';
-    el.className = 'hidden-notice hidden';
-    el.onclick = () => {
-      state.hidden.clear();
-      localStorage.setItem(LS_HIDDEN, JSON.stringify([]));
-      renderMemberBar();
-      renderGrid();
-    };
-    $('memberBar').insertAdjacentElement('afterend', el);
-  }
+  const el = $('hiddenNotice');
+  if (!el) return;
   const from = `${state.year}-${pad(state.month + 1)}-01`;
   const to = `${state.year}-${pad(state.month + 1)}-31`;
   const n = countHiddenEvents(state.events, state.hidden, from, to);
-  el.textContent = `非表示の家族の予定がこの月に${n}件あります（タップで全員表示）`;
+  const msg = `非表示の家族の予定がこの月に${n}件あります（タップで全員表示）`;
+  el.textContent = `非表示 ${n}件`;
+  el.title = msg;
+  el.setAttribute('aria-label', msg);
   el.classList.toggle('hidden', n === 0);
 }
+
+// 月表示の週の行の高さと、帯の段数・文字の大きさを、画面の残りの大きさから決める。
+// 上部を詰めて空いた高さを週の行に回し、段数を増やして帯の文字も読める大きさにする（以前は4段・10px固定）。
+// viewH: 画面の高さ／gridTop: 月の表の上端（ページ先頭からの距離）／gridW: 月の表の幅
+function calcGridLayout(viewH, gridTop, gridW) {
+  const LANE_TOP = 22;  // 日付数字の下から帯が始まる位置(px)
+  const MORE_H = 12;    // 入りきらない件数の表示に空けておく高さ(px)
+  const cellW = gridW / 7;
+  // 1日の幅が広い画面ほど文字を大きく。スマホ（1日≒53px）は従来どおり10px
+  const fs = cellW >= 150 ? 12 : cellW >= 90 ? 11 : 10;
+  const laneH = fs + 5;                              // 帯1段の高さ（12→17／11→16／10→15）
+  const minRow = Math.max(98, LANE_TOP + MORE_H + 4 * laneH); // どの画面でも最低4段は入る高さ
+  // 表の幅が測れない（画面が隠れている）ときは、画面の高さに合わせず最小の高さで描く
+  const fit = gridW > 0 ? Math.floor((viewH - gridTop) / 6) : 0;
+  const rowH = Math.min(240, Math.max(minRow, fit - (fit % 4)));  // 4px刻み（画面のわずかな変化で描き直さない）
+  const lanes = Math.max(4, Math.floor((rowH - LANE_TOP - MORE_H) / laneH));
+  return { rowH, lanes, laneH, laneTop: LANE_TOP, barH: laneH - 2, fs, moreFs: Math.max(9, fs - 1) };
+}
+
+let gridLayoutSig = '';  // 直近に描いたときの寸法。画面の大きさが変わって寸法が変わったときだけ描き直すための比較用
+function measureGridLayout() {
+  const grid = $('monthGrid');
+  const top = grid.getBoundingClientRect().top + (window.pageYOffset || 0);
+  return calcGridLayout(document.documentElement.clientHeight || window.innerHeight, top, grid.clientWidth);
+}
+
+// 回転・ウインドウの拡大縮小で、行の高さや段数が変わるときだけ描き直す
+let gridResizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(gridResizeTimer);
+  gridResizeTimer = setTimeout(() => {
+    const main = $('mainScreen');
+    if (!main || main.classList.contains('hidden') || !state.year) return;
+    if (JSON.stringify(measureGridLayout()) !== gridLayoutSig) renderGrid();
+  }, 150);
+});
 
 function toggleMember(id) {
   if (state.hidden.has(id)) state.hidden.delete(id);
@@ -330,9 +372,15 @@ function renderGrid() {
   const start = new Date(first);
   start.setDate(1 - first.getDay());
   const today = todayStr();
-  const LANES = 4;      // 1週あたりの帯の最大段数
-  const LANE_H = 15;    // 帯1段の高さ(px)
-  const LANE_TOP = 22;  // 日付数字の下からの開始位置(px)
+  // 週の行の高さ・帯の段数・文字の大きさは画面の残りの大きさから決める（calcGridLayout）
+  const layout = measureGridLayout();
+  gridLayoutSig = JSON.stringify(layout);
+  grid.style.setProperty('--bar-h', layout.barH + 'px');
+  grid.style.setProperty('--bar-fs', layout.fs + 'px');
+  grid.style.setProperty('--more-fs', layout.moreFs + 'px');
+  const LANES = layout.lanes;      // 1週あたりの帯の最大段数
+  const LANE_H = layout.laneH;     // 帯1段の高さ(px)
+  const LANE_TOP = layout.laneTop; // 日付数字の下からの開始位置(px)
 
   const spanDays = (ev) =>
     (new Date((ev['終了日'] || ev['開始日']) + 'T00:00:00') - new Date(ev['開始日'] + 'T00:00:00')) / 86400000;
@@ -341,6 +389,7 @@ function renderGrid() {
   for (let w = 0; w < 6; w++) {
     const weekEl = document.createElement('div');
     weekEl.className = 'week-row';
+    weekEl.style.minHeight = layout.rowH + 'px';
     const dates = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(start);
