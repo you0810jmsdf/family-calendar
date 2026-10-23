@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v33';
+const APP_VERSION = 'v34';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -169,6 +169,20 @@ function isOrderEvent(ev) {
   return !!ev && ev['取込元'] === ORDER_SOURCE;
 }
 
+// 受注の「ステータス」は、オーダー進捗の同期が予定のメモに「ステータス: ○○」と書く
+// （書き手は family_calendar_sync.js。この書式を変えるときは両方そろえる）
+function orderStatus(ev) {
+  const m = /ステータス[:：]\s*([^\s]+)/.exec((ev && ev['メモ']) || '');
+  return m ? m[1] : '';
+}
+
+// 相談だけ・お客様の返事待ちで、まだ製作に入っていない受注のステータス（帯を黄色にする）
+const ORDER_WAITING_STATUSES = ['相談受付', 'ご連絡先待ち', 'ご連絡待ち'];
+
+function isWaitingOrder(ev) {
+  return isOrderEvent(ev) && ORDER_WAITING_STATUSES.indexOf(orderStatus(ev)) >= 0;
+}
+
 // 私的な予定を先に、受注を後ろに並べる（同じグループの中の順は変えない）。
 // 月表示の帯は1週あたりの段数に限りがある。受注が私的な予定を押し出さないよう、
 // 段は私的な予定から先に使い、受注は余った段だけに入れる
@@ -215,10 +229,12 @@ function eventBackground(ev, dir) {
   return `linear-gradient(${dir || 'to right'}, ${stops})`;
 }
 
-// 受注は担当の色に白い斜線を重ねて、私的な予定の帯と一目で見分けられるようにする
+// 受注は担当の色に白い斜線を重ねて、私的な予定の帯と一目で見分けられるようにする。
+// 相談だけ・返事待ちの受注は、担当の色でなく黄色にする（斜線は同じ）
+const ORDER_WAITING_COLOR = '#f5c518';
 function orderBackground(ev, dir) {
   return 'repeating-linear-gradient(135deg, rgba(255,255,255,.28) 0 4px, rgba(255,255,255,0) 4px 8px), ' +
-    eventBackground(ev, dir);
+    (isWaitingOrder(ev) ? ORDER_WAITING_COLOR : eventBackground(ev, dir));
 }
 
 function memberById(id) {
@@ -460,6 +476,7 @@ function renderGrid() {
       bar.type = 'button';
       bar.className = 'ev-bar' +
         (isOrd ? ' order' : '') +
+        (isWaitingOrder(ev) ? ' order-wait' : '') +
         (ev['開始日'] < wStart ? ' cont-l' : '') +
         ((ev['終了日'] || ev['開始日']) > wEnd ? ' cont-r' : '');
       bar.style.cssText =

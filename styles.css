@@ -155,6 +155,8 @@ body {
 .member-bar.orders-only .member-chip:not(.order-chip):not(.add-chip) .chip-name { color: var(--muted); }
 .member-bar.orders-only .member-chip.order-chip .avatar.order-avatar { box-shadow: 0 0 0 3px rgba(138, 109, 59, 0.35); }
 .ev-bar.order { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55); }
+/* 相談だけ・返事待ちの受注は黄色の帯。白文字は読めないので濃い文字色にする（色はJS側 ORDER_WAITING_COLOR） */
+.ev-bar.order-wait { color: #4a3500; text-shadow: none; box-shadow: inset 0 0 0 1px rgba(120, 85, 0, 0.45); }
 .ai-photo-btn { margin-top: -4px; }
 .ai-img-preview {
   width: 100%; height: 120px; border-radius: 10px; border: 1px solid var(--line);

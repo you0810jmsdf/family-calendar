@@ -351,6 +351,58 @@ test('isEventVisible: 受注だけ／通常／受注を隠す の3状態で、�
   assert.strictEqual(off(priv), true);
 });
 
+// ---------- 受注の状態（相談だけ・返事待ちは黄色）----------
+
+// app.js の1行の const を取り出す（テストと本体で語彙がずれないように、複製せず実物を読む）
+function pickConst(name) {
+  const m = SRC.match(new RegExp('^const ' + name + ' = .*;$', 'm'));
+  assert.ok(m, `app.js に const ${name} が見つかりません`);
+  return m[0];
+}
+
+const loadWait = (state) => new Function('state',
+  "const HOLIDAY_MEMBER = '__holiday__';\nconst ORDER_SOURCE = 'orderprogress';\n" +
+  pickConst('ORDER_WAITING_STATUSES') + '\n' + pickConst('ORDER_WAITING_COLOR') + '\n' +
+  pickFunction('isHoliday') + '\n' + pickFunction('isOrderEvent') + '\n' +
+  pickFunction('orderStatus') + '\n' + pickFunction('isWaitingOrder') + '\n' +
+  pickFunction('memberById') + '\n' + pickFunction('eventColors') + '\n' +
+  pickFunction('eventBackground') + '\n' + pickFunction('orderBackground') + '\n' +
+  'return { orderStatus, isWaitingOrder, orderBackground, ORDER_WAITING_COLOR };')(state);
+
+const ordEv = (status, extra) => Object.assign({
+  'メンバー': 'yu', '取込元': 'orderprogress',
+  'メモ': `品名: ロングウォレット\nステータス: ${status}\nサイズ: 革小物\n進捗ページ: https://example.com/`,
+}, extra || {});
+
+test('orderStatus: メモの「ステータス: ○○」を読む（全角コロン・CRLF・無しにも対応）', () => {
+  const { orderStatus } = loadWait({ members: [] });
+  assert.strictEqual(orderStatus(ordEv('相談受付')), '相談受付');
+  assert.strictEqual(orderStatus({ 'メモ': 'ステータス：ご連絡待ち\r\nサイズ: x' }), 'ご連絡待ち');
+  assert.strictEqual(orderStatus({ 'メモ': '品名: x' }), '');
+  assert.strictEqual(orderStatus({}), '');
+  assert.strictEqual(orderStatus(undefined), '');
+});
+
+test('isWaitingOrder: 相談受付・ご連絡先待ち・ご連絡待ちの受注だけ。製作中以降・受注以外は対象外', () => {
+  const { isWaitingOrder } = loadWait({ members: [] });
+  ['相談受付', 'ご連絡先待ち', 'ご連絡待ち'].forEach((s) => assert.strictEqual(isWaitingOrder(ordEv(s)), true, s));
+  ['見積書作成', '設計中', '受付中', '素材準備中', '制作中', '仕上げ中', '完成', '発送済み', 'お渡し済み']
+    .forEach((s) => assert.strictEqual(isWaitingOrder(ordEv(s)), false, s));
+  // 私的な予定のメモに同じ文言があっても黄色にしない
+  assert.strictEqual(isWaitingOrder(ordEv('相談受付', { '取込元': '' })), false);
+  assert.strictEqual(isWaitingOrder(ordEv('相談受付', { '取込元': 'gcal' })), false);
+});
+
+test('orderBackground: 返事待ちの受注は黄色・それ以外の受注は担当の色（どちらも斜線つき）', () => {
+  const state = { members: [{ id: 'yu', '色': '#4a7cf0', '表示順': '1' }] };
+  const { orderBackground, ORDER_WAITING_COLOR } = loadWait(state);
+  const wait = orderBackground(ordEv('ご連絡待ち'));
+  const work = orderBackground(ordEv('制作中'));
+  assert.ok(wait.includes(ORDER_WAITING_COLOR) && !wait.includes('#4a7cf0'), wait);
+  assert.ok(work.includes('#4a7cf0') && !work.includes(ORDER_WAITING_COLOR), work);
+  assert.ok(wait.startsWith('repeating-linear-gradient') && work.startsWith('repeating-linear-gradient'), '斜線は共通');
+});
+
 // ---------- 月表示の寸法（画面の残りの大きさから行の高さ・段数・文字を決める）----------
 
 const { calcGridLayout } = new Function(pickFunction('calcGridLayout') + '\nreturn { calcGridLayout };')();
