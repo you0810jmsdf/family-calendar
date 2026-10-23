@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v33';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -23,7 +23,9 @@ const state = {
   memberPhoto: '',
   hidden: new Set(JSON.parse(localStorage.getItem(LS_HIDDEN) || '[]')),
   showHolidays: localStorage.getItem('famcal_holidays') !== 'off',
-  showOrders: localStorage.getItem('famcal_orders') !== 'off',
+  // 受注の表示: 'show'=私的な予定と一緒に／'only'=受注だけ／'off'=受注を隠す。
+  // 'only' は保存しない（開き直して予定が消えたと誤解しないよう、再読み込みで通常に戻す）
+  ordersMode: localStorage.getItem('famcal_orders') === 'off' ? 'off' : 'show',
   offline: false,
 };
 
@@ -174,9 +176,16 @@ function privateFirst(evs) {
   return evs.filter((ev) => !isOrderEvent(ev)).concat(evs.filter(isOrderEvent));
 }
 
+// 受注チップを押したときの次の状態（通常 → 受注だけ → 受注を隠す → 通常）
+function nextOrdersMode(mode) {
+  return mode === 'show' ? 'only' : mode === 'only' ? 'off' : 'show';
+}
+
 function isEventVisible(ev) {
+  // 「受注だけ」のときは、私的な予定・祝日・家族の絞り込みに関係なく受注だけを出す
+  if (state.ordersMode === 'only') return isOrderEvent(ev);
   if (isHoliday(ev)) return state.showHolidays;
-  if (isOrderEvent(ev) && !state.showOrders) return false;
+  if (isOrderEvent(ev) && state.ordersMode === 'off') return false;
   const ids = (ev['メンバー'] || '').split(',').filter(String);
   if (ids.length === 0) return true;
   return ids.some((id) => !state.hidden.has(id));
@@ -240,6 +249,7 @@ function avatarInitial(m) {
 function renderMemberBar() {
   const bar = $('memberBar');
   bar.innerHTML = '';
+  bar.classList.toggle('orders-only', state.ordersMode === 'only'); // 受注以外のチップを薄くする（styles.css）
   const sorted = [...state.members].sort((a, b) => Number(a['表示順'] || 99) - Number(b['表示順'] || 99));
   sorted.forEach((m) => {
     const btn = document.createElement('button');
@@ -262,11 +272,13 @@ function renderMemberBar() {
   // 受注の予定が1件でもあるときだけ出す（オーダー進捗の連動が動くまでは画面を変えない）
   if (state.events.some(isOrderEvent)) {
     const ord = document.createElement('button');
-    ord.className = 'member-chip' + (state.showOrders ? '' : ' off');
-    ord.innerHTML = '<div class="avatar order-avatar">🛠️</div><div class="chip-name">受注</div>';
+    ord.className = 'member-chip order-chip' + (state.ordersMode === 'off' ? ' off' : '');
+    ord.innerHTML = '<div class="avatar order-avatar">🛠️</div><div class="chip-name">' +
+      (state.ordersMode === 'only' ? '受注のみ' : '受注') + '</div>';
     ord.onclick = () => {
-      state.showOrders = !state.showOrders;
-      try { localStorage.setItem('famcal_orders', state.showOrders ? 'on' : 'off'); } catch (e) { /* 保存できなくても切替は効く */ }
+      state.ordersMode = nextOrdersMode(state.ordersMode);
+      // 'only' は保存しない。再読み込みでは「隠す」か通常だけを引き継ぐ
+      try { localStorage.setItem('famcal_orders', state.ordersMode === 'off' ? 'off' : 'on'); } catch (e) { /* 保存できなくても切替は効く */ }
       renderMemberBar();
       renderGrid();
     };
@@ -315,7 +327,7 @@ function renderHiddenNotice() {
   el.textContent = `非表示 ${n}件`;
   el.title = msg;
   el.setAttribute('aria-label', msg);
-  el.classList.toggle('hidden', n === 0);
+  el.classList.toggle('hidden', n === 0 || state.ordersMode === 'only'); // 受注だけの間は家族の絞り込みを知らせない
 }
 
 // 月表示の週の行の高さと、帯の段数・文字の大きさを、画面の残りの大きさから決める。
@@ -408,7 +420,7 @@ function renderGrid() {
     dates.forEach((d) => {
       const dstr = ymd(d);
       const dow = d.getDay();
-      const holidays = state.showHolidays
+      const holidays = state.showHolidays && state.ordersMode !== 'only'
         ? state.events.filter((ev) => isHoliday(ev) && ev['開始日'] <= dstr && dstr <= (ev['終了日'] || ev['開始日']))
         : [];
       const cell = document.createElement('div');

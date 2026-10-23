@@ -311,6 +311,46 @@ test('countHiddenEvents: 受注は担当が隠れていても数えない（受�
   assert.strictEqual(countHiddenEvents(events, new Set(['x']), '2026-09-01', '2026-09-31'), 1);
 });
 
+test('nextOrdersMode: 通常 → 受注だけ → 受注を隠す → 通常 と一巡する', () => {
+  const { nextOrdersMode } = new Function(pickFunction('nextOrdersMode') + '\nreturn { nextOrdersMode };')();
+  assert.strictEqual(nextOrdersMode('show'), 'only');
+  assert.strictEqual(nextOrdersMode('only'), 'off');
+  assert.strictEqual(nextOrdersMode('off'), 'show');
+});
+
+test('isEventVisible: 受注だけ／通常／受注を隠す の3状態で、私的な予定・祝日・受注の出方が変わる', () => {
+  const make = (state) => new Function('state',
+    "const HOLIDAY_MEMBER = '__holiday__';\nconst ORDER_SOURCE = 'orderprogress';\n" +
+    pickFunction('isHoliday') + '\n' + pickFunction('isOrderEvent') + '\n' +
+    pickFunction('isEventVisible') + '\nreturn isEventVisible;')(state);
+  const order = { 'メンバー': 'yu', '取込元': 'orderprogress' };
+  const priv = { 'メンバー': 'yu', '取込元': '' };
+  const other = { 'メンバー': 'chie', '取込元': '' };
+  const noOwner = { 'メンバー': '', '取込元': '' };
+  const holiday = { 'メンバー': '__holiday__', '取込元': 'gcal' };
+
+  // 受注だけ: 受注以外は全部出ない（祝日・担当なしも）。家族を隠していても受注は出る
+  const only = make({ ordersMode: 'only', showHolidays: true, hidden: new Set(['yu']) });
+  assert.strictEqual(only(order), true, '受注だけ: ゆうきを隠していても受注は出る');
+  assert.strictEqual(only(priv), false);
+  assert.strictEqual(only(other), false);
+  assert.strictEqual(only(noOwner), false);
+  assert.strictEqual(only(holiday), false, '受注だけ: 祝日も出ない');
+
+  // 通常: 従来どおり（家族の絞り込みと祝日の切替が効く）
+  const show = make({ ordersMode: 'show', showHolidays: true, hidden: new Set(['chie']) });
+  assert.strictEqual(show(order), true);
+  assert.strictEqual(show(priv), true);
+  assert.strictEqual(show(other), false);
+  assert.strictEqual(show(noOwner), true);
+  assert.strictEqual(show(holiday), true);
+
+  // 受注を隠す: 受注だけが消える
+  const off = make({ ordersMode: 'off', showHolidays: true, hidden: new Set() });
+  assert.strictEqual(off(order), false);
+  assert.strictEqual(off(priv), true);
+});
+
 // ---------- 月表示の寸法（画面の残りの大きさから行の高さ・段数・文字を決める）----------
 
 const { calcGridLayout } = new Function(pickFunction('calcGridLayout') + '\nreturn { calcGridLayout };')();
