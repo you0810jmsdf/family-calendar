@@ -157,6 +157,25 @@ body {
 .ev-bar.order { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55); }
 /* 相談だけ・返事待ちの受注は黄色の帯。白文字は読めないので濃い文字色にする（色はJS側 ORDER_WAITING_COLOR） */
 .ev-bar.order-wait { color: #4a3500; text-shadow: none; box-shadow: inset 0 0 0 1px rgba(120, 85, 0, 0.45); }
+/* 月表の上の「本日の受注」1行帯。今日受付の受注がある日だけ出る（JS: renderOrderTodayBar）。
+   件数が多くても高さは増やさず、横にスクロールさせる。色は帯と同じ（返事待ちは黄色・斜線つき） */
+.order-today-bar {
+  display: flex; align-items: center; gap: 6px; padding: 3px 10px;
+  background: var(--card); border-bottom: 1px solid var(--line);
+  overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+}
+.order-today-bar::-webkit-scrollbar { display: none; }
+.order-today-label { flex-shrink: 0; font-size: 12px; font-weight: 700; color: #8a6d3b; }
+.order-today-chip {
+  flex-shrink: 0; max-width: 72vw; overflow: hidden; text-overflow: ellipsis;
+  padding: 0 9px; border: none; border-radius: 12px; font-size: 12px; line-height: 20px; color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0 4px, rgba(255, 255, 255, 0) 4px 8px), var(--accent);
+}
+.order-today-chip.order-wait {
+  color: #4a3500; text-shadow: none; box-shadow: inset 0 0 0 1px rgba(120, 85, 0, 0.45);
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0 4px, rgba(255, 255, 255, 0) 4px 8px), #f5c518;
+}
 .ai-photo-btn { margin-top: -4px; }
 .ai-img-preview {
   width: 100%; height: 120px; border-radius: 10px; border: 1px solid var(--line);

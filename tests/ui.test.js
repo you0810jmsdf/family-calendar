@@ -280,7 +280,8 @@ const loadOrder = () => new Function(
   "const HOLIDAY_MEMBER = '__holiday__';\nconst ORDER_SOURCE = 'orderprogress';\n" +
   pickFunction('isHoliday') + '\n' + pickFunction('isOrderEvent') + '\n' +
   pickFunction('privateFirst') + '\n' + pickFunction('countHiddenEvents') + '\n' +
-  'return { isOrderEvent, privateFirst, countHiddenEvents };')();
+  pickFunction('todayOrderEvents') + '\n' +
+  'return { isOrderEvent, privateFirst, countHiddenEvents, todayOrderEvents };')();
 
 test('isOrderEvent: 取込元が orderprogress の予定だけが受注（Googleカレンダー取込・手入力・空は違う）', () => {
   const { isOrderEvent } = loadOrder();
@@ -429,4 +430,39 @@ test('calcGridLayout: 低い画面でも最低4段が入り、行の高さは4px
   assert.deepStrictEqual([hidden.rowH, hidden.lanes, hidden.fs], [98, 4, 10]);
   // 巨大な画面でも行は伸びすぎない
   assert.strictEqual(calcGridLayout(4000, 92, 3000).rowH, 240);
+});
+
+// ---------- 本日の受注（月表の上の1行帯）----------
+
+test('todayOrderEvents: 今日受付の受注だけを取り出す（私的な予定・昨日までの受注・他の取込元は除く）', () => {
+  const { todayOrderEvents } = loadOrder();
+  const evs = [
+    { id: 'op-OP-2610-014', '取込元': 'orderprogress', '取込キー': 'OP-2610-014', '開始日': '2026-10-25', 'タイトル': 'OP-2610-014 高橋' },
+    { id: 'op-OP-2610-013', '取込元': 'orderprogress', '取込キー': 'OP-2610-013', '開始日': '2026-10-22', 'タイトル': 'OP-2610-013 濱田' },
+    { id: 'mine', '取込元': '', '開始日': '2026-10-25', 'タイトル': '私的な予定' },
+    { id: 'g', '取込元': 'gcal', '開始日': '2026-10-25', 'タイトル': 'Googleから' },
+  ];
+  assert.deepStrictEqual(todayOrderEvents(evs, '2026-10-25').map((e) => e.id), ['op-OP-2610-014']);
+});
+
+test('todayOrderEvents: 件数が多くても全件返し、受付番号の順に並べる（段数に左右されない）', () => {
+  const { todayOrderEvents } = loadOrder();
+  const evs = [];
+  for (let i = 12; i >= 1; i--) {
+    const no = 'OP-2610-' + String(i).padStart(3, '0');
+    evs.push({ id: 'op-' + no, '取込元': 'orderprogress', '取込キー': no, '開始日': '2026-10-25', 'タイトル': no + ' x' });
+  }
+  const got = todayOrderEvents(evs, '2026-10-25').map((e) => e['取込キー']);
+  assert.strictEqual(got.length, 12);
+  assert.deepStrictEqual(got, got.slice().sort());
+});
+
+test('todayOrderEvents: 今日の受注が無ければ空、取込キーが無くてもタイトルで並べて落ちない', () => {
+  const { todayOrderEvents } = loadOrder();
+  assert.deepStrictEqual(todayOrderEvents([], '2026-10-25'), []);
+  const got = todayOrderEvents([
+    { id: 'b', '取込元': 'orderprogress', '開始日': '2026-10-25', 'タイトル': 'B案件' },
+    { id: 'a', '取込元': 'orderprogress', '開始日': '2026-10-25', 'タイトル': 'A案件' },
+  ], '2026-10-25');
+  assert.deepStrictEqual(got.map((e) => e.id), ['a', 'b']);
 });

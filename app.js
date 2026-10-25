@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v35';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -190,6 +190,14 @@ function privateFirst(evs) {
   return evs.filter((ev) => !isOrderEvent(ev)).concat(evs.filter(isOrderEvent));
 }
 
+// 今日受付の受注（取込元=orderprogress・開始日が今日）。月表示の帯は段数に限りがあり、
+// 新しい受注ほど後ろに回って「🛠n」に隠れる。今日入った受注は、月表の上の1行帯にも必ず出す
+function todayOrderEvents(events, today) {
+  return events
+    .filter((ev) => isOrderEvent(ev) && ev['開始日'] === today)
+    .sort((a, b) => String(a['取込キー'] || a['タイトル']).localeCompare(String(b['取込キー'] || b['タイトル'])));
+}
+
 // 受注チップを押したときの次の状態（通常 → 受注だけ → 受注を隠す → 通常）
 function nextOrdersMode(mode) {
   return mode === 'show' ? 'only' : mode === 'only' ? 'off' : 'show';
@@ -346,6 +354,32 @@ function renderHiddenNotice() {
   el.classList.toggle('hidden', n === 0 || state.ordersMode === 'only'); // 受注だけの間は家族の絞り込みを知らせない
 }
 
+// 月表の上の「本日の受注」1行帯。今日受付の受注がある日だけ出す。帯の段数・家族の絞り込みに関係なく出し、
+// 「受注を隠す」にしているときだけ隠す。帯の高さは月表の高さ計算（measureGridLayout）に含まれる
+function renderOrderTodayBar() {
+  const bar = $('orderTodayBar');
+  if (!bar) return;
+  const list = state.ordersMode === 'off' ? [] : todayOrderEvents(state.events, todayStr());
+  bar.innerHTML = '';
+  bar.classList.toggle('hidden', list.length === 0);
+  if (!list.length) return;
+  const label = document.createElement('span');
+  label.className = 'order-today-label';
+  label.textContent = '🛠 本日の受注 ' + list.length + '件';
+  bar.appendChild(label);
+  list.forEach((ev) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'order-today-chip' + (isWaitingOrder(ev) ? ' order-wait' : '');
+    chip.textContent = ev['タイトル'];
+    chip.onclick = () => {
+      state.selectedDate = ev['開始日'];
+      openEventEditor(ev);
+    };
+    bar.appendChild(chip);
+  });
+}
+
 // 月表示の週の行の高さと、帯の段数・文字の大きさを、画面の残りの大きさから決める。
 // 上部を詰めて空いた高さを週の行に回し、段数を増やして帯の文字も読める大きさにする（以前は4段・10px固定）。
 // viewH: 画面の高さ／gridTop: 月の表の上端（ページ先頭からの距離）／gridW: 月の表の幅
@@ -394,6 +428,7 @@ function renderGrid() {
   // 予定が変わるたびに必ずここを通るので、やることの件数もあわせて出し直す
   renderTodoBadge();
   renderHiddenNotice();
+  renderOrderTodayBar(); // 月表の高さの計測より前に出し入れする
   const grid = $('monthGrid');
   grid.innerHTML = '';
   const first = new Date(state.year, state.month, 1);
