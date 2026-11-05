@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v35';
+const APP_VERSION = 'v36';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -99,16 +99,20 @@ async function api(action, payload = {}) {
   return data;
 }
 
-function applyData(data) {
+// fromCache=true は端末の控えを画面に出すだけの呼び出し。控えを書き直すと
+// 「保存した時刻」が今に変わり、古いデータが新しく見えてしまうため書き戻さない
+function applyData(data, fromCache) {
   if (data.members) state.members = data.members;
   if (data.events) state.events = data.events;
   if (data.settings) state.settings = data.settings;
-  // 端末の控えは読み込み失敗時の予備にすぎない。このサイト（github.io）は他のツールと
+  if (fromCache) return;
+  // 端末の控えは、起動時に最初に出す表示と、読み込み失敗時の予備に使う。このサイト（github.io）は他のツールと
   // 保存領域を共有しているため、容量いっぱいで書き込めないことがある。
   // ここで例外を出すと、サーバーには保存できたのに「エラー」と表示されてしまう
   try {
     localStorage.setItem(LS_CACHE, JSON.stringify({
       members: state.members, events: state.events, settings: state.settings,
+      savedAt: Date.now(),
     }));
   } catch (e) {
     // 古い控えが残ると、次にオフラインになったとき古い予定を見せてしまうため消しておく
@@ -117,6 +121,32 @@ function applyData(data) {
 }
 
 const isAuthError = (e) => String(e.message).indexOf('認証エラー') >= 0;
+
+// 端末に残した前回データを読む。壊れている・予定の配列が無いときは null（空の画面を出さない）
+function parseCachedData(str) {
+  if (!str) return null;
+  try {
+    const d = JSON.parse(str);
+    return d && Array.isArray(d.events) ? d : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// 帯に出す「いつの表示か」。savedAt（ミリ秒）が無い古い控えは、時刻なしで案内する
+function cacheBannerText(savedAt, suffix) {
+  if (!savedAt) return '前回の表示です' + suffix;
+  const d = new Date(savedAt);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `前回更新 ${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm} の表示です${suffix}`;
+}
+
+function setBanner(text) {
+  const el = $('offlineBanner');
+  el.textContent = text || '';
+  el.classList.toggle('hidden', !text);
+}
 
 async function loadAll() {
   try {
@@ -134,15 +164,16 @@ async function loadAll() {
   } catch (e) {
     // 家族コード変更（認証エラー）時はキャッシュに逃がさず再入力へ誘導
     if (String(e.message).indexOf('認証エラー') >= 0) throw e;
-    const cache = localStorage.getItem(LS_CACHE);
+    const cache = parseCachedData(localStorage.getItem(LS_CACHE));
     if (cache) {
-      applyData(JSON.parse(cache));
+      applyData(cache, true);
       state.offline = true;
-    } else {
-      throw e;
+      setBanner(cacheBannerText(cache.savedAt, '（更新できませんでした）'));
+      return;
     }
+    throw e;
   }
-  $('offlineBanner').classList.toggle('hidden', !state.offline);
+  setBanner('');
 }
 
 // ---------- 日付ユーティリティ ----------
@@ -1612,6 +1643,14 @@ async function start() {
     return;
   }
   $('mainScreen').classList.remove('hidden');
+  // サーバー（GAS）の返事を待つ間、空の画面にしない。端末に残した前回データを先に出し、
+  // 通信が終わったら最新に置き換える（失敗したときは前回の表示のまま帯で知らせる）
+  let cached = null;
+  try { cached = parseCachedData(localStorage.getItem(LS_CACHE)); } catch (e) { /* 読めなければ従来どおり */ }
+  if (cached) {
+    applyData(cached, true);
+    setBanner(cacheBannerText(cached.savedAt, '（更新中…）'));
+  }
   renderAll();
   try {
     await loadAll();
@@ -1621,6 +1660,7 @@ async function start() {
       // 再試行しても認証エラーなら入力画面へ戻す（保存コードは消さず入力欄に残す）
       $('familyKeyInput').value = state.key;
       state.key = '';
+      setBanner('');
       $('mainScreen').classList.add('hidden');
       $('setupScreen').classList.remove('hidden');
       $('setupError').textContent = '認証できませんでした。コードが新しくなった場合は入力し直してください（そのまま「はじめる」で再試行できます）';

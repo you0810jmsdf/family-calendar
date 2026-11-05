@@ -466,3 +466,32 @@ test('todayOrderEvents: 今日の受注が無ければ空、取込キーが無�
   ], '2026-10-25');
   assert.deepStrictEqual(got.map((e) => e.id), ['a', 'b']);
 });
+
+// ---- 起動時に先に出す「前回データ」（v36） ----
+const loadCache = new Function(
+  pickFunction('parseCachedData') + '\n' +
+  pickFunction('cacheBannerText') + '\n' +
+  'return { parseCachedData, cacheBannerText };'
+);
+
+test('parseCachedData: 予定の配列がある控えだけ使い、空・壊れ・別形式は null（空の画面を出さない）', () => {
+  const { parseCachedData } = loadCache();
+  const ok = parseCachedData(JSON.stringify({ members: [], events: [{ id: 'a' }], settings: {}, savedAt: 1 }));
+  assert.strictEqual(ok.events.length, 1);
+  assert.strictEqual(ok.savedAt, 1);
+  assert.strictEqual(parseCachedData(''), null);
+  assert.strictEqual(parseCachedData(null), null);
+  assert.strictEqual(parseCachedData('{壊れた'), null);
+  assert.strictEqual(parseCachedData('null'), null);
+  assert.strictEqual(parseCachedData(JSON.stringify({ events: 'x' })), null);
+  // 予定が0件でも「控えがある」ことは正しい（予定ゼロの家族もある）
+  assert.deepStrictEqual(parseCachedData(JSON.stringify({ events: [] })).events, []);
+});
+
+test('cacheBannerText: 保存した日時を月/日 時:分で出し、時刻の無い古い控えは時刻なしで案内する', () => {
+  const { cacheBannerText } = loadCache();
+  const t = new Date(2026, 10, 5, 8, 5).getTime(); // 端末の時刻で 11/5 08:05
+  assert.strictEqual(cacheBannerText(t, '（更新中…）'), '前回更新 11/5 08:05 の表示です（更新中…）');
+  assert.strictEqual(cacheBannerText(t, '（更新できませんでした）'), '前回更新 11/5 08:05 の表示です（更新できませんでした）');
+  assert.strictEqual(cacheBannerText(undefined, '（更新中…）'), '前回の表示です（更新中…）');
+});
