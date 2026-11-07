@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v36';
+const APP_VERSION = 'v37';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -602,7 +602,7 @@ function openDaySheet(dstr) {
     const barBg = isOrd ? orderBackground(ev, 'to bottom') : eventBackground(ev, 'to bottom');
     item.innerHTML = `<div class="bar" style="background:${barBg}"></div>
       <div class="info"><div class="t">${esc(ev['タイトル'])}</div>
-      <div class="sub">${gcalMark}${esc(time)}${esc(period)}${ev['メモ'] ? ' ・ ' + linkify(ev['メモ']) : ''}</div></div>
+      <div class="sub">${gcalMark}${esc(time)}${esc(period)}${placeLinkHtml(ev['場所'])}${ev['メモ'] ? ' ・ ' + linkify(ev['メモ']) : ''}</div></div>
       <div class="faces">${faces}</div>`;
     // 受注には依頼者の名前が入っているため、家族のLINEへ誤って送らないよう共有ボタンを出さない
     if (!isOrd) {
@@ -627,6 +627,37 @@ function openDaySheet(dstr) {
   $('daySheet').classList.remove('hidden');
 }
 
+// ---------- 場所（地図） ----------
+
+// 場所欄の文字から、地図で開くURLを作る。空なら空文字
+function mapSearchUrl(place) {
+  const q = String(place || '').trim();
+  return q ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q) : '';
+}
+
+// 日の一覧に出す「📍場所」。タップすると地図が開く（a.memo-link なので編集画面は開かない）。空なら何も出さない
+function placeLinkHtml(place) {
+  const url = mapSearchUrl(place);
+  if (!url) return '';
+  return ` ・ 📍<a href="${esc(url)}" class="memo-link" target="_blank" rel="noopener noreferrer">${esc(String(place).trim())}</a>`;
+}
+
+// 編集画面の場所欄の直下に、地図で開くリンクを出す
+function renderPlaceLink() {
+  const box = $('evPlaceLink');
+  const place = $('evPlace').value.trim();
+  box.innerHTML = '';
+  box.classList.toggle('hidden', !place);
+  if (!place) return;
+  const a = document.createElement('a');
+  a.className = 'memo-link-chip';
+  a.href = mapSearchUrl(place);
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.textContent = '📍 地図で開く';
+  box.appendChild(a);
+}
+
 // ---------- LINE共有 ----------
 
 function fmtDateJP(dstr) {
@@ -643,6 +674,7 @@ function shareEventToLine(ev) {
     .map((id) => (memberById(id) || {})['名前']).filter(Boolean).join('・');
   let text = `【家族カレンダー】\n■ ${ev['タイトル']}\n${period} ${time}`;
   if (names) text += `\n対象: ${names}`;
+  if (ev['場所']) text += `\n場所: ${ev['場所']}`;
   if (ev['メモ']) text += `\nメモ: ${ev['メモ']}`;
   window.location.href = 'https://line.me/R/share?text=' + encodeURIComponent(text);
 }
@@ -734,6 +766,8 @@ function openEventEditor(ev) {
   $('evAllDay').checked = ev ? ev['終日'] === 'ON' : true;
   $('evTimeStart').value = ev ? ev['開始時刻'] : '';
   $('evTimeEnd').value = ev ? ev['終了時刻'] : '';
+  $('evPlace').value = ev ? (ev['場所'] || '') : '';
+  renderPlaceLink();
   $('evMemo').value = ev ? ev['メモ'] : '';
   renderMemoLinks();
   $('evGmail').checked = ev ? ev['Gmail転記'] === 'ON' : false;
@@ -759,7 +793,7 @@ function openEventEditor(ev) {
 // 受注の予定は、オーダー進捗の同期が毎時上書きする。ここで直しても戻ってしまうため、
 // 編集画面は見るだけにして、案内と進捗ページへのリンクを出す。
 // 編集画面は他の予定と使い回すので、受注でないときは必ず元の状態へ戻す
-const ORDER_LOCK_FIELDS = ['evTitle', 'evStart', 'evEnd', 'evAllDay', 'evTimeStart', 'evTimeEnd', 'evMemo', 'evTodo', 'evGmail'];
+const ORDER_LOCK_FIELDS = ['evTitle', 'evStart', 'evEnd', 'evAllDay', 'evTimeStart', 'evTimeEnd', 'evPlace', 'evMemo', 'evTodo', 'evGmail'];
 function applyOrderNotice(ev) {
   const isOrd = isOrderEvent(ev);
   $('evOrderNotice').classList.toggle('hidden', !isOrd);
@@ -903,6 +937,9 @@ async function saveEvent() {
     '開始時刻': $('evAllDay').checked ? '' : $('evTimeStart').value,
     '終了時刻': $('evAllDay').checked ? '' : $('evTimeEnd').value,
     'メンバー': [...state.evSelectedMembers].join(','),
+    // 場所は空でも送る（GASは「送られなかった項目」だけ元の値を残すので、消したいときは空文字が必要）。
+    // 編集画面を開いた時点で元の場所が入力欄に入っているため、触らなければ元のまま保存される
+    '場所': $('evPlace').value.trim(),
     'メモ': $('evMemo').value.trim(),
     'Gmail転記': $('evGmail').checked ? 'ON' : 'OFF',
     '要対応': $('evTodo').checked ? 'ON' : 'OFF',
@@ -1506,6 +1543,7 @@ async function saveAiPicked() {
         '開始時刻': ev['終日'] === 'OFF' ? (ev['開始時刻'] || '') : '',
         '終了時刻': ev['終日'] === 'OFF' ? (ev['終了時刻'] || '') : '',
         'メンバー': ev['メンバー'] || '',
+        '場所': ev['場所'] || '',
         'メモ': ev['メモ'] || '',
         'Gmail転記': 'OFF',
       };
@@ -1721,6 +1759,7 @@ function bindEvents() {
   $('evAllDay').onchange = updateTimeRow;
   $('evRepeat').onchange = updateRepeatRow;
   $('evMemo').oninput = renderMemoLinks;
+  $('evPlace').oninput = renderPlaceLink;
   $('evSave').onclick = saveEvent;
   $('evDelete').onclick = deleteEvent;
   $('mSave').onclick = saveMember;

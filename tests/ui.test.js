@@ -495,3 +495,35 @@ test('cacheBannerText: 保存した日時を月/日 時:分で出し、時刻の
   assert.strictEqual(cacheBannerText(t, '（更新できませんでした）'), '前回更新 11/5 08:05 の表示です（更新できませんでした）');
   assert.strictEqual(cacheBannerText(undefined, '（更新中…）'), '前回の表示です（更新中…）');
 });
+
+// ---- 場所欄（v37）：アプリの画面に場所の表示・入力が無かった ----
+const loadPlace = new Function(
+  pickFunction('esc') + '\n' +
+  pickFunction('mapSearchUrl') + '\n' +
+  pickFunction('placeLinkHtml') + '\n' +
+  'return { mapSearchUrl, placeLinkHtml };'
+);
+
+test('mapSearchUrl: 日本語・記号を含む場所を地図検索のURLにし、空は空文字', () => {
+  const { mapSearchUrl } = loadPlace();
+  assert.strictEqual(
+    mapSearchUrl('印西市立中央公民館 3階 学級講座室（印西市大森3934番地1）'),
+    'https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent('印西市立中央公民館 3階 学級講座室（印西市大森3934番地1）'));
+  assert.ok(mapSearchUrl('A&B=C#1').indexOf('A%26B%3DC%231') > 0, '& = # はそのまま入れない');
+  assert.strictEqual(mapSearchUrl(''), '');
+  assert.strictEqual(mapSearchUrl('   '), '');
+  assert.strictEqual(mapSearchUrl(undefined), '');
+});
+
+test('placeLinkHtml: 場所があるときだけ「📍」付きの地図リンク。HTMLは無害化し、編集画面を開かない a.memo-link', () => {
+  const { placeLinkHtml } = loadPlace();
+  assert.strictEqual(placeLinkHtml(''), '');
+  assert.strictEqual(placeLinkHtml(undefined), '');
+  const h = placeLinkHtml('公民館');
+  assert.ok(h.includes('📍') && h.includes('class="memo-link"') && h.includes('rel="noopener noreferrer"'));
+  assert.ok(h.includes('query=' + encodeURIComponent('公民館')));
+  const evil = placeLinkHtml('<script>alert(1)</script>"x');
+  assert.ok(!evil.includes('<script>'), 'タグは文字として出す');
+  assert.ok(evil.includes('&lt;script&gt;'));
+});
