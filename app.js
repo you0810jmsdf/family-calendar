@@ -2,7 +2,7 @@
 'use strict';
 
 // 端末でどの版が動いているか確認できるよう、設定画面の最下部に表示する
-const APP_VERSION = 'v37';
+const APP_VERSION = 'v38';
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbyZ87FzDagftCc9Dcw-L-d_3uqjK1VqyLJsck3y2pToaeOyDJxdyvfd02NZl_cQBmU/exec';
 const LS_KEY = 'famcal_key';
@@ -712,11 +712,18 @@ function daysBetweenStr(a, b) {
   return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
 }
 
+// 期間のある予定（開始日≠終了日）に「毎日」を付けると、1日ずつずれた同じ帯が重なって並ぶ
+// （2026-11-04 書類提出期限が4本重なった）。期間予定では毎日を使わせない
+function isDailyOnSpan(kind, start, end) {
+  return kind === 'daily' && !!start && !!end && start !== end;
+}
+
 // 1件の予定を、繰り返しの種類（daily/weekly/biweekly/monthly）と回数ぶんに増やす。
 // 1件目は元のIDのまま、2件目以降は新しいID。期間のある予定は日数を保ったままずらす
 function expandRepeat(ev, kind, count) {
   const n = Math.max(1, Math.min(REPEAT_MAX, Number(count) || 1));
   if (kind === 'none' || n === 1) return [ev];
+  if (isDailyOnSpan(kind, ev['開始日'], ev['終了日'])) return [ev];
   const span = daysBetweenStr(ev['開始日'], ev['終了日'] || ev['開始日']);
   const out = [];
   for (let i = 0; i < n; i++) {
@@ -742,6 +749,7 @@ function aiRepeatOf(ev) {
   if (!r || !REPEAT_LABELS[r['種類']]) return null;
   const count = Math.floor(Number(r['回数']));
   if (!(count >= 2)) return null;
+  if (isDailyOnSpan(r['種類'], ev['開始日'], ev['終了日'])) return null;
   return { kind: r['種類'], count: Math.min(count, REPEAT_MAX) };
 }
 
@@ -829,6 +837,17 @@ function renderMemoLinks() {
 }
 
 function updateRepeatRow() {
+  // 期間予定では「毎日」を選べなくする。選ばれていたら「しない」へ戻す
+  const span = isDailyOnSpan('daily', $('evStart').value, $('evEnd').value);
+  const dailyOpt = $('evRepeat').querySelector('option[value="daily"]');
+  if (dailyOpt) {
+    dailyOpt.disabled = span;
+    dailyOpt.textContent = span ? '毎日（期間のある予定では使えません）' : '毎日';
+  }
+  if (span && $('evRepeat').value === 'daily') {
+    $('evRepeat').value = 'none';
+    toast('期間のある予定は「毎日」で繰り返せません（帯が重なるため）');
+  }
   $('evRepeatCountWrap').classList.toggle('hidden', $('evRepeat').value === 'none');
 }
 
@@ -1758,6 +1777,8 @@ function bindEvents() {
   $('addEventFromDay').onclick = () => { closeOverlay('daySheet'); openEventEditor(null); };
   $('evAllDay').onchange = updateTimeRow;
   $('evRepeat').onchange = updateRepeatRow;
+  $('evStart').addEventListener('change', updateRepeatRow);
+  $('evEnd').addEventListener('change', updateRepeatRow);
   $('evMemo').oninput = renderMemoLinks;
   $('evPlace').oninput = renderPlaceLink;
   $('evSave').onclick = saveEvent;

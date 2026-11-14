@@ -30,6 +30,7 @@ const load = new Function(
   pickFunction('addDaysStr') + '\n' +
   pickFunction('addMonthsStr') + '\n' +
   pickFunction('daysBetweenStr') + '\n' +
+  pickFunction('isDailyOnSpan') + '\n' +
   pickFunction('expandRepeat') + '\n' +
   "const REPEAT_LABELS = { daily: '毎日', weekly: '毎週', biweekly: '隔週', monthly: '毎月' };\n" +
   pickFunction('aiRepeatOf') + '\n' +
@@ -67,6 +68,19 @@ test('expandRepeat: しない・1回・上限超えの扱い', () => {
   assert.strictEqual(expandRepeat(ev, 'none', 5).length, 1);
   assert.strictEqual(expandRepeat(ev, 'daily', 1).length, 1);
   assert.strictEqual(expandRepeat(ev, 'daily', 99).length, 20);
+});
+
+test('expandRepeat: 期間のある予定に毎日は付けない（帯が重なるため1件のまま）', () => {
+  const ev = { id: 'a', '開始日': '2026-11-05', '終了日': '2026-11-24' };
+  assert.strictEqual(expandRepeat(ev, 'daily', 4).length, 1);
+  assert.strictEqual(expandRepeat(ev, 'weekly', 4).length, 4);
+  assert.strictEqual(expandRepeat({ id: 'b', '開始日': '2026-11-05', '終了日': '2026-11-05' }, 'daily', 4).length, 4);
+});
+
+test('aiRepeatOf: 期間のある予定の毎日は繰り返しなし扱い', () => {
+  const rep = { '種類': 'daily', '回数': 4 };
+  assert.strictEqual(aiRepeatOf({ '開始日': '2026-11-05', '終了日': '2026-11-24', '繰り返し': rep }), null);
+  assert.deepStrictEqual(aiRepeatOf({ '開始日': '2026-11-05', '終了日': '2026-11-05', '繰り返し': rep }), { kind: 'daily', count: 4 });
 });
 
 test('fmtDateJP: 月日と曜日を出す', () => {
